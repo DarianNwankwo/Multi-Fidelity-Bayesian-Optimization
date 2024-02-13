@@ -1,1 +1,2 @@
-# Cost-Aware-Bayesian-Optimization
+# Multi-Fidelity Bayesian Optimization
+
