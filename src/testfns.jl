@@ -614,3 +614,35 @@ function TestBohachevsky()
     xopt = ([0.0, 0.0],)
     return TestFunction(2, bounds, xopt, f, ∇f)
 end
+
+
+function get_random_testfn()
+    testfns = [
+        (TestBraninHoo(), "BraninHoo"),
+        (TestRosenbrock(), "Rosenbrock"),
+        (TestRastrigin(2), "Rastrigin"),
+        (TestAckley(2), "Ackley"),
+        (TestSixHump(), "SixHump"),
+        (TestGramacyLee(), "GramacyLee"),
+        (TestGoldsteinPrice(), "GoldsteinPrice"),
+        (TestBeale(), "Beale"),
+        (TestEasom(), "Easom"),
+        (TestStyblinskiTang(2), "StyblinskiTang"),
+        (TestBukinN6(), "BukinN6"),
+        (TestCrossInTray(), "CrossInTray"),
+        (TestEggHolder(), "EggHolder"),
+        (TestHolderTable(), "HolderTable"),
+        (TestSchwefel(2), "Schwefel"),
+        (TestLevyN13(), "LevyN13"),
+        (TestTrid(2), "Trid"),
+        (TestMccormick(), "Mccormick"),
+        (TestHartmann3D(), "Hartmann3D"),
+        (TestHartmann4D(), "Hartmann4D"),
+        (TestHartmann6D(), "Hartmann6D"),
+        (TestShekel(), "Shekel"),
+        (TestDropWave(), "DropWave"),
+        (TestGriewank(2), "Griewank"),
+        (TestBohachevsky(), "Bohachevsky")
+    ]
+    return testfns[rand(1:length(testfns))]
+end
