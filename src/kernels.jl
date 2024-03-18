@@ -53,6 +53,8 @@ function kernel_vector(k::Kernel, x::AbstractVector, X::AbstractMatrix)
     end
 
     return KxX
+end
+
 using LinearAlgebra
 
 #kernels from https://www.cs.toronto.edu/~duvenaud/cookbook/
