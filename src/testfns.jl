@@ -652,12 +652,12 @@ function TestBohachevsky()
 end
 
 
-function get_random_testfn()
-    testfns = [
+function get_test_functions()
+    return [
         (TestBraninHoo(), "BraninHoo"),
         (TestRosenbrock(), "Rosenbrock"),
         (TestRastrigin(2), "Rastrigin"),
-        (TestAckley(2), "Ackley"),
+        (TestAckley(2), "Ackley2D"),
         (TestSixHump(), "SixHump"),
         (TestGramacyLee(), "GramacyLee"),
         (TestGoldsteinPrice(), "GoldsteinPrice"),
@@ -680,5 +680,39 @@ function get_random_testfn()
         (TestGriewank(2), "Griewank"),
         (TestBohachevsky(), "Bohachevsky")
     ]
+end
+
+function get_random_testfn()
+    testfns = get_test_functions()
     return testfns[rand(1:length(testfns))]
+end
+
+
+function randsample(N, d, lbs, ubs)
+    X = zeros(d, N)
+    for j = 1:N
+        for i = 1:d
+            X[i,j] = rand(Uniform(lbs[i], ubs[i]))
+        end
+    end
+    return X
+end
+
+
+function get_toy_problem(;N=1, fn_name=nothing)
+    if isnothing(fn_name)
+        testfn, testfn_name = get_random_testfn()
+    else
+        all_testfns = get_test_functions()
+        for pair in all_testfns
+            if pair[2] == fn_name
+                testfn, testfn_name = pair
+            end
+        end
+    end
+
+    X = randsample(N, testfn.dim, testfn.bounds[:, 1], testfn.bounds[:, 2])
+    y = testfn(X)
+
+    return (fn=testfn, name=testfn_name, input=X, output=y)
 end
