@@ -1,6 +1,42 @@
 # https://www.sfu.ca/~ssurjano/optimization.html
 # https://en.wikipedia.org/wiki/Test_functions_for_optimization
 
+struct MultiFidelityTestFunction
+    dim
+    bounds
+    xopt
+    fs
+end
+
+function TestPark()
+    fs = Vector{Any}()
+
+    function highest_fidelity(x)
+        term2 = 1 + (x[2] + x[3]^2)*(x[4] / x[1]^2)
+        term1 = (x[1] / 2) * (sqrt(term2) - 1)
+        term3 = (x[1] + 3x[4]) * exp(1 + sin(x[3]))
+        return term1 + term3
+    end
+
+    function lowest_fidelity(x)
+        term1 = (1 + sin(x[1] / 10.)) * highest_fidelity(x)
+        term2 = 2x[1] + x[2]^2 + x[3]^2 + .5
+        return term1 - term2
+    end
+
+    # Fidelity is increasing in the index
+    push!(fs, lowest_fidelity)
+    push!(fs, highest_fidelity)
+
+    bounds = zeros(4, 2)
+    bounds[:, 1] .= 0.
+    bounds[:, 2] .= 1.
+
+    xopt = ((0., 0., 0., .5),)
+
+    return MultiFidelityTestFunction(4, bounds, xopt, fs)
+end
+
 struct TestFunction
     dim
     bounds
