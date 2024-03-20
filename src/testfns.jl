@@ -654,10 +654,12 @@ end
 
 function get_test_functions()
     return [
+        (TestQuadratic1D(), "Quadratic1D"),
         (TestBraninHoo(), "BraninHoo"),
         (TestRosenbrock(), "Rosenbrock"),
         (TestRastrigin(2), "Rastrigin"),
         (TestAckley(2), "Ackley2D"),
+        (TestAckley(1), "Ackley1D"),
         (TestSixHump(), "SixHump"),
         (TestGramacyLee(), "GramacyLee"),
         (TestGoldsteinPrice(), "GoldsteinPrice"),

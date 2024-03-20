@@ -1,8 +1,25 @@
+import Base:+,*
+
+using LinearAlgebra
+
 struct Kernel
     θ::AbstractVector
     ψ::Function
+    dψdθ::Function
 end
-(k::Kernel)(x, y) = k.ψ(x, y)
+
+function Kernel(θ::AbstractVector, ψ::Function)
+    return Kernel(θ, ψ, (x, y) -> nothing)
+end
+
+(k::Kernel)(x::AbstractVector, y::AbstractVector) = k.ψ(x, y)
++(k1::Kernel, k2::Kernel) = Kernel([k1.θ; k2.θ], (x, y) -> k1(x, y) + k2(x, y))
+*(k1::Kernel, k2::Kernel) = Kernel([k1.θ; k2.θ], (x, y) -> k1(x, y) * k2(x, y))
+
+function *(α::Real, k::Kernel)
+    @assert α >= 0 "α must be non-negative"
+    return Kernel(k.θ, (x, y) -> α * k(x, y))
+end
 
 
 function SquaredExponential(lengthscales::AbstractVector)
@@ -29,12 +46,23 @@ function SquaredExponential(lengthscale::AbstractFloat)
 end
 
 
+function Periodic(lengthscale::AbstractFloat, period::AbstractFloat)
+    function periodic(x, y)
+        return exp(-2 * sin(pi * norm(x - y) / period) ^ 2 / lengthscale ^ 2)
+    end
+
+    return Kernel([lengthscale, period], periodic)
+end
+
+
 function gram_matrix(k::Kernel, X::AbstractMatrix; noise = 0.)
     d, N = size(X)
     G = zeros(N, N)
+    k0 = k(zeros(d), zeros(d))
 
     for j = 1:N
-        for i = j:N
+        G[j, j] = k0
+        for i = j+1:N
             G[i, j] = k(X[:, i], X[:, j])
             G[j, i] = G[i, j]
         end
@@ -42,7 +70,6 @@ function gram_matrix(k::Kernel, X::AbstractMatrix; noise = 0.)
 
     return G + noise * I
 end
-
 
 function kernel_vector(k::Kernel, x::AbstractVector, X::AbstractMatrix)
     d, N = size(X)
@@ -54,8 +81,7 @@ function kernel_vector(k::Kernel, x::AbstractVector, X::AbstractMatrix)
 
     return KxX
 end
-
-using LinearAlgebra
+(k::Kernel)(x::AbstractVector, X::AbstractMatrix) = kernel_vector(k, x, X)
 
 #kernels from https://www.cs.toronto.edu/~duvenaud/cookbook/
 

@@ -1,3 +1,6 @@
+import Base.~
+
+
 include("./kernels.jl")
 
 
@@ -11,33 +14,42 @@ struct ZeroMeanGaussianProcess
     ymean::AbstractFloat
 end
 
-function predictive_mean(zmgp::ZeroMeanGaussianProcess, x::AbstractVector)
-    KxX = kernel_vector(zmgp.k, x, zmgp.X)
-    return dot(KxX, zmgp.c) + zmgp.ymean
+function predictive_mean(gp::ZeroMeanGaussianProcess, x::AbstractVector)
+    KxX = gp.k( x, gp.X)
+    return dot(KxX, gp.c) + gp.ymean
 end
 
-function predictive_variance(zmgp::ZeroMeanGaussianProcess, x::AbstractVector)
-    kxx = zmgp.k(x, x)
-    KxX = kernel_vector(zmgp.k, x, zmgp.X)
-    w = zmgp.L' \ (zmgp.L \ KxX)
+function predictive_variance(gp::ZeroMeanGaussianProcess, x::AbstractVector)
+    kxx = gp.k(x, x)
+    KxX = gp.k(x, gp.X)
+    w = gp.L' \ (gp.L \ KxX)
 
     return kxx - dot(KxX', w)
 end
 
-function predict(zmgp::ZeroMeanGaussianProcess, x::AbstractVector)
-    return predictive_mean(zmgp, x), predictive_variance(zmgp, x)
+function predict(gp::ZeroMeanGaussianProcess, x::AbstractVector)
+    return predictive_mean(gp, x), predictive_variance(gp, x)
 end
 
-function (zmgp::ZeroMeanGaussianProcess)(x::AbstractVector)
-    return predict(zmgp, x)
-end
-# (TODO) Add syntatic sugar for sampling from the Gaussian process
-function sample(gp::ZeroMeanGaussianProcess, x::AbstractVector)
+function (gp::ZeroMeanGaussianProcess)(x::AbstractVector)
+    return predict(gp, x)
 end
 
+function sample(gp::ZeroMeanGaussianProcess, x::AbstractVector; gaussian=nothing)
+    μ, σ = predict(gp, x)
+    u = isnothing(gaussian) ? randn() : gaussian
+    
+    return μ + σ * u
+end
 
-function get_observations(zmgp::ZeroMeanGaussianProcess)
-    return zmgp.y .+ zmgp.ymean
+function ~(payload, gp::ZeroMeanGaussianProcess)
+    x, gaussian = typeof(payload) <: Tuple ? payload : (payload, nothing)
+
+    return sample(gp, x, gaussian=gaussian)
+end
+
+function get_observations(gp::ZeroMeanGaussianProcess)
+    return gp.y .+ gp.ymean
 end
 
 
@@ -51,3 +63,13 @@ function ZeroMeanGP(k::Kernel, X::AbstractMatrix, y::AbstractVector; noise = 0.)
     return ZeroMeanGaussianProcess(k, X, K, L, y, c, ymean)
 end
 
+
+function log_likelihood(gp::ZeroMeanGaussianProcess)
+    N = length(gp.y)
+
+    data_fit = -.5(dot(gp.y, gp.c))
+    complexity_penalty = -sum(log.(diag(gp.L)))
+    normalization_constant = -N / 2 * log(2π)
+
+    return data_fit + complexity_penalty + normalization_constant
+end
