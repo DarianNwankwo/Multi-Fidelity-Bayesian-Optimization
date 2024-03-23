@@ -73,3 +73,20 @@ function log_likelihood(gp::ZeroMeanGaussianProcess)
 
     return data_fit + complexity_penalty + normalization_constant
 end
+
+
+function plot1d(gp::ZeroMeanGaussianProcess; interval::AbstractRange)
+    fx = zeros(length(interval))
+    stdx = zeros(length(interval))
+    normal_sample = randn()
+
+    for (i, x) in enumerate(interval)
+        μx, σx = gp([x])
+        fx[i] = μx
+        stdx[i] = sqrt(σx)
+    end
+
+    p = plot(interval, fx, ribbons=2stdx, label="μ ± 2σ")
+    scatter!(gp.X', get_observations(gp), label="Observations")
+    return p
+end

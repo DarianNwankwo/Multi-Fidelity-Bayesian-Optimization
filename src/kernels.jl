@@ -34,7 +34,7 @@ function SquaredExponential(lengthscales::AbstractVector)
 end
 
 
-function SquaredExponential(lengthscale::AbstractFloat)
+function SquaredExponential(lengthscale::AbstractFloat = 1.)
     function squared_exponential(x, y)
         M = Diagonal((lengthscale ^ -2.) * ones(length(x)))
         r = x - y
@@ -46,12 +46,30 @@ function SquaredExponential(lengthscale::AbstractFloat)
 end
 
 
-function Periodic(lengthscale::AbstractFloat, period::AbstractFloat)
+function Periodic(lengthscale::AbstractFloat = 1., period::AbstractFloat = 3.14)
     function periodic(x, y)
         return exp(-2 * sin(pi * norm(x - y) / period) ^ 2 / lengthscale ^ 2)
     end
 
     return Kernel([lengthscale, period], periodic)
+end
+
+
+function Exponential(lengthscale::AbstractFloat = 1.)
+    function exponential(x, y)
+        return exp(-norm(x - y) / lengthscale)
+    end
+
+    return Kernel([lengthscale], exponential)
+end
+
+
+function GammaExponential(lengthscale::AbstractFloat = 1., γ::AbstractFloat = 1.)
+    function gamma_exponential(x, y)
+        return exp((-norm(x - y) / lengthscale) ^ γ)
+    end
+
+    return Kernel([lengthscale, γ], gamma_exponential)
 end
 
 
