@@ -45,6 +45,14 @@ function SquaredExponential(lengthscale::AbstractFloat = 1.)
     return Kernel([lengthscale], squared_exponential)
 end
 
+function LinearKernel(y_var::Float64, var::Float64, c::AbstractVector)
+        # Linear kernel function
+        function linear_kernel(x::AbstractVector, y::AbstractVector)
+            return y_var + var * dot(x - c, y - c)
+    end
+    return Kernel([y_var, var, c], linear_kernel)
+end
+
 
 function Periodic(lengthscale::AbstractFloat = 1., period::AbstractFloat = 3.14)
     function periodic(x, y)
@@ -100,4 +108,5 @@ function kernel_vector(k::Kernel, x::AbstractVector, X::AbstractMatrix)
 
     return KxX
 end
+
 (k::Kernel)(x::AbstractVector, X::AbstractMatrix) = kernel_vector(k, x, X)
