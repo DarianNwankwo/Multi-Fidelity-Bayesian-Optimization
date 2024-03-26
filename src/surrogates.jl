@@ -39,7 +39,7 @@ function sample(gp::ZeroMeanGaussianProcess, x::AbstractVector; gaussian=nothing
     μ, σ = predict(gp, x)
     u = isnothing(gaussian) ? randn() : gaussian
     
-    return μ + σ * u
+    return μ + sqrt(σ) * u
 end
 
 function ~(payload, gp::ZeroMeanGaussianProcess)
