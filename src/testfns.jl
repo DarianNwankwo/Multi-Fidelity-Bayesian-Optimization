@@ -117,7 +117,7 @@ function apply_shift(testfn::TestFunction, s::Number)
 end
 
 
-function tplot(f :: TestFunction)
+function tplot(f::TestFunction; st=:contour)
     if f.dim == 1
         xx = range(f.bounds[1,1], f.bounds[1,2], length=250)
         plot(xx, (x) -> f([x]), label="f(x)")
@@ -125,7 +125,7 @@ function tplot(f :: TestFunction)
     elseif f.dim == 2
         xx = range(f.bounds[1,1], f.bounds[1,2], length=100)
         yy = range(f.bounds[2,1], f.bounds[2,2], length=100)
-        plot(xx, yy, (x,y) -> f([x,y]), st=:contour)
+        plot(xx, yy, (x,y) -> f([x,y]), st=st)
         scatter!([xy[1] for xy in f.xopt], [xy[2] for xy in f.xopt], label="xopt")
         # scatter!([f.xopt[1]], [f.xopt[2]], label="xopt")
     else
@@ -697,7 +697,7 @@ function get_test_functions()
         (TestQuadratic1D(), "Quadratic1D"),
         (TestBraninHoo(), "BraninHoo"),
         (TestRosenbrock(), "Rosenbrock"),
-        (TestRastrigin(2), "Rastrigin"),
+        (TestRastrigin(1), "Rastrigin"),
         (TestAckley(2), "Ackley2D"),
         (TestAckley(1), "Ackley1D"),
         (TestSixHump(), "SixHump"),
@@ -730,14 +730,8 @@ function get_random_testfn()
 end
 
 
-function randsample(N, d, lbs, ubs)
-    X = zeros(d, N)
-    for j = 1:N
-        for i = 1:d
-            X[i,j] = rand(Uniform(lbs[i], ubs[i]))
-        end
-    end
-    return X
+function get_dense_grid(f::TestFunction; Δx=0.01)
+    return first(f.bounds[:, 1]):Δx:first(f.bounds[:, 2])
 end
 
 
