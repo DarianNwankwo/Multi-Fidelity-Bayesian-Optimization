@@ -46,7 +46,6 @@ function SquaredExponential(lengthscale::AbstractFloat = 1.)
 end
 
 function LinearKernel(y_var::Float64, var::Float64, c::AbstractVector)
-        # Linear kernel function
         function linear_kernel(x::AbstractVector, y::AbstractVector)
             return y_var + var * dot(x - c, y - c)
     end
@@ -81,20 +80,30 @@ function GammaExponential(lengthscale::AbstractFloat = 1., γ::AbstractFloat = 1
 end
 
 
+function WhiteNoise(σ::AbstractFloat = 1e-6)
+    function white_noise(x, y)
+        return x == y ? σ : 0.
+    end
+
+    return Kernel([σ], white_noise)
+end
+
+
 function gram_matrix(k::Kernel, X::AbstractMatrix; noise = 0.)
     d, N = size(X)
     G = zeros(N, N)
     k0 = k(zeros(d), zeros(d))
+    noise = WhiteNoise(noise)
 
     for j = 1:N
-        G[j, j] = k0
+        G[j, j] = k0 + noise(X[:, j], X[:, j])
         for i = j+1:N
             G[i, j] = k(X[:, i], X[:, j])
             G[j, i] = G[i, j]
         end
     end
 
-    return G + noise * I
+    return G
 end
 
 
