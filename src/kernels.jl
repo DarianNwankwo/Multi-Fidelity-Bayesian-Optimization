@@ -19,13 +19,7 @@ end
 
 
 function KernelGeneric(kernel_constructor, θ::AbstractVector)
-    if typeof(θ[1]) <: AbstractVector
-        # Corresponds to dealing with summation and product of kernels
-        # We need to remember which hyperparameters correspond to which kernel
-        kernel_function, kernel_function_hypers = kernel_constructor(θ)
-    else
-        kernel_function, kernel_function_hypers = kernel_constructor(θ...)
-    end
+    kernel_function, kernel_function_hypers = kernel_constructor(θ...)
 
     return Kernel(
         θ,
@@ -41,19 +35,6 @@ end
 
 (k::Kernel)(x::AbstractVector, y::AbstractVector) = k.ψ(x, y)
 function +(k1::Kernel, k2::Kernel)
-    # function sum_kernel_constructor(θ)
-    #     function sum_kernel(x, y)
-    #         return k1(x, y) + k2(x, y)
-    #     end
-
-    #     function sum_kernel_hypers(x, y, θ)
-    #         return k1.ψh(x, y, θ[1]...) + k2.ψh(x, y, θ[2]...)
-    #     end
-        
-    #     return (sum_kernel, sum_kernel_hypers)
-    # end
-
-    # return KernelGeneric(sum_kernel_constructor, [k1.θ, k2.θ])
     return Kernel(
         [k1.θ; k2.θ],
         (x, y) -> k1(x, y) + k2(x, y),
@@ -64,11 +45,22 @@ function +(k1::Kernel, k2::Kernel)
         k1.ψconstructor
     )
 end
-# *(k1::Kernel, k2::Kernel) = Kernel([k1.θ; k2.θ], (x, y) -> k1(x, y) * k2(x, y))
+
+function *(k1::Kernel, k2::Kernel)
+    return Kernel(
+        [k1.θ; k2.θ],
+        (x, y) -> k1(x, y) * k2(x, y),
+        (x, y, θ) -> k1.ψh(x, y, θ[1:length(k1.θ)]) * k2.ψh(x, y, θ[length(k1.θ)+1:end]),
+        (x, y) -> ForwardDiff.gradient(x -> k1(x, y) * k2(x, y), x),
+        (x, y) -> ForwardDiff.gradient(y -> k1(x, y) * k2(x, y), y),
+        (x, y) -> ForwardDiff.gradient(θ -> k1.ψh(x, y, θ[1:length(k1.θ)]) * k2.ψh(x, y, θ[length(k1.θ)+1:end]), [k1.θ; k2.θ]),
+        k1.ψconstructor
+    )
+end
+
 
 function *(α::Real, k::Kernel)
     @assert α >= 0 "α must be non-negative"
-    # return Kernel(k.θ, (x, y) -> α * k(x, y))
     kernel_function, kernel_function_hypers = k.ψconstructor(k.θ...)
 
     return Kernel(
