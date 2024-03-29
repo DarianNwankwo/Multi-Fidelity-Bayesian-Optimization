@@ -75,6 +75,29 @@ function log_likelihood(gp::ZeroMeanGaussianProcess)
 end
 
 
+function δlog_likelihood(gp::ZeroMeanGaussianProcess, δθ::AbstractVector)
+    d, N = size(gp.X)
+    δK = gram_matrix_dθ(gp.k, gp.X, δθ)
+
+    return .5dot(gp.c, δK, gp.c) - .5sum(diag(gp.K \ δK))
+end
+
+
+function ∇log_likelihood(gp::ZeroMeanGaussianProcess)
+    nθ = length(gp.k.θ)
+    δθ = zeros(nθ)
+    ∇L = zeros(nθ)
+
+    for j in 1:nθ
+        δθ[:] .= 0.
+        δθ[j] = 1.
+        ∇L[j] = δlog_likelihood(gp, δθ)
+    end
+
+    return ∇L
+end
+
+
 function plot1d(gp::ZeroMeanGaussianProcess; interval::AbstractRange)
     fx = zeros(length(interval))
     stdx = zeros(length(interval))

@@ -7,22 +7,32 @@ struct Kernel
     θ::AbstractVector
     ψ::Function
     ψh::Function
+    dψdx::Function
+    dψdy::Function
     dψdθ::Function
     ψconstructor::Function
 
-    function Kernel(θ, ψ, ψh, dψdθ, ψconstructor)
-        new(θ, ψ, ψh, dψdθ, ψconstructor)
+    function Kernel(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor)
+        new(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor)
     end
 end
 
-# dψdθ needs to be a function that expects x, y and theta
+
 function KernelGeneric(kernel_constructor, θ::AbstractVector)
-    kernel_function, kernel_function_hypers = kernel_constructor(θ...)
+    if typeof(θ[1]) <: AbstractVector
+        # Corresponds to dealing with summation and product of kernels
+        # We need to remember which hyperparameters correspond to which kernel
+        kernel_function, kernel_function_hypers = kernel_constructor(θ)
+    else
+        kernel_function, kernel_function_hypers = kernel_constructor(θ...)
+    end
 
     return Kernel(
         θ,
         kernel_function,
         kernel_function_hypers,
+        (x, y) -> ForwardDiff.gradient(x -> kernel_function(x, y), x),
+        (x, y) -> ForwardDiff.gradient(y -> kernel_function(x, y), y),
         (x, y) -> ForwardDiff.gradient(θ -> kernel_function_hypers(x, y, θ), θ),
         kernel_constructor
     ) 
@@ -31,19 +41,28 @@ end
 
 (k::Kernel)(x::AbstractVector, y::AbstractVector) = k.ψ(x, y)
 function +(k1::Kernel, k2::Kernel)
-    function sum_kernel_constructor(θ...)
-        function sum_kernel(x, y)
-            return k1(x, y) + k2(x, y)
-        end
+    # function sum_kernel_constructor(θ)
+    #     function sum_kernel(x, y)
+    #         return k1(x, y) + k2(x, y)
+    #     end
 
-        function sum_kernel_hypers(x, y, θ)
-            return k1.ψh(x, y, k1.θ) + k2.ψh(x, y, k2.θ)
-        end
+    #     function sum_kernel_hypers(x, y, θ)
+    #         return k1.ψh(x, y, θ[1]...) + k2.ψh(x, y, θ[2]...)
+    #     end
         
-        return (sum_kernel, sum_kernel_hypers)
-    end
+    #     return (sum_kernel, sum_kernel_hypers)
+    # end
 
-    return KernelGeneric(sum_kernel_constructor, [k1.θ; k2.θ])
+    # return KernelGeneric(sum_kernel_constructor, [k1.θ, k2.θ])
+    return Kernel(
+        [k1.θ; k2.θ],
+        (x, y) -> k1(x, y) + k2(x, y),
+        (x, y, θ) -> k1.ψh(x, y, θ[1:length(k1.θ)]) + k2.ψh(x, y, θ[length(k1.θ)+1:end]),
+        (x, y) -> ForwardDiff.gradient(x -> k1(x, y) + k2(x, y), x),
+        (x, y) -> ForwardDiff.gradient(y -> k1(x, y) + k2(x, y), y),
+        (x, y) -> ForwardDiff.gradient(θ -> k1.ψh(x, y, θ[1:length(k1.θ)]) + k2.ψh(x, y, θ[length(k1.θ)+1:end]), [k1.θ; k2.θ]),
+        k1.ψconstructor
+    )
 end
 # *(k1::Kernel, k2::Kernel) = Kernel([k1.θ; k2.θ], (x, y) -> k1(x, y) * k2(x, y))
 
@@ -56,6 +75,8 @@ function *(α::Real, k::Kernel)
         k.θ,
         (x, y) -> α * k(x, y),
         (x, y, θ) -> α * k.ψh(x, y, θ),
+        (x, y) -> ForwardDiff.gradient(x -> α * kernel_function(x, y), x),
+        (x, y) -> ForwardDiff.gradient(y -> α * kernel_function(x, y), y),
         (x, y) -> ForwardDiff.gradient(θ -> α * kernel_function_hypers(x, y, θ), k.θ),
         k.ψconstructor
     )
@@ -71,7 +92,7 @@ function SquaredExponentialConstructor(lengthscales...)
         return exp(-.5d)
     end
 
-    function squared_exponential_hypers(x, y, θ)
+    function squared_exponential_hypers(x, y, θ::AbstractVector)
         M = Diagonal(θ .^ -2)
         r = x - y
         d = dot(r', M, r)
@@ -91,7 +112,7 @@ function SquaredExponentialConstructor(lengthscale::AbstractFloat = 1.)
         return exp(-.5d)
     end
 
-    function squared_exponential_hypers(x, y, θ)
+    function squared_exponential_hypers(x, y, θ::AbstractVector)
         M = Diagonal((θ[1] ^ -2.) * ones(length(x)))
         r = x - y
         d = dot(r', M, r)
@@ -108,7 +129,7 @@ function PeriodicConstructor(lengthscale::AbstractFloat = 1., period::AbstractFl
         return exp(-2 * sin(pi * norm(x - y) / period) ^ 2 / lengthscale ^ 2)
     end
 
-    function periodic_hypers(x, y, θ)
+    function periodic_hypers(x, y, θ::AbstractVector)
         return exp(-2 * sin(pi * norm(x - y) / θ[2]) ^ 2 / θ[1] ^ 2)
     end
 
@@ -122,7 +143,7 @@ function ExponentialConstructor(lengthscale::AbstractFloat = 1.)
         return exp(-norm(x - y) / lengthscale)
     end
 
-    function exponential_hypers(x, y, θ)
+    function exponential_hypers(x, y, θ::AbstractVector)
         return exp(-norm(x - y) / θ[1])
     end
 
@@ -136,7 +157,7 @@ function GammaExponentialConstructor(lengthscale::AbstractFloat = 1., γ::Abstra
         return exp((-norm(x - y) / lengthscale) ^ γ)
     end
 
-    function gamma_exponential_hypers(x, y, θ)
+    function gamma_exponential_hypers(x, y, θ::AbstractVector)
         return exp((-norm(x - y) / θ[1]) ^ θ[2])
     end
 
@@ -150,7 +171,7 @@ function RationalQuadraticConstructor(lengthscale::AbstractFloat = 1., α::Abstr
         return (1 + norm(x - y) ^ 2 / (2 * α * lengthscale ^ 2)) ^ -α
     end
 
-    function rational_quadradic_hypers(x, y, θ)
+    function rational_quadradic_hypers(x, y, θ::AbstractVector)
         return (1 + norm(x - y) ^ 2 / (2 * θ[2] * θ[1] ^ 2)) ^ -θ[2]
     end
 
@@ -164,7 +185,7 @@ function Matern12Constructor(lengthscale::AbstractFloat = 1.)
         return exp(-norm(x - y) / lengthscale)
     end
 
-    function matern12_hypers(x, y, θ)
+    function matern12_hypers(x, y, θ::AbstractVector)
         return exp(-norm(x - y) / θ[1])
     end
 
@@ -179,7 +200,7 @@ function Matern32Constructor(lengthscale::AbstractFloat = 1.)
         return (1 + sqrt(3) * r) * exp(-sqrt(3) * r)
     end
 
-    function matern32_hypers(x, y, θ)
+    function matern32_hypers(x, y, θ::AbstractVector)
         r = norm(x - y) / θ[1]
         return (1 + sqrt(3) * r) * exp(-sqrt(3) * r)
     end
@@ -195,7 +216,7 @@ function Matern52Constructor(lengthscale::AbstractFloat = 1.)
         return (1 + sqrt(5) * r + 5 * r ^ 2 / 3) * exp(-sqrt(5) * r)
     end
 
-    function matern52_hypers(x, y, θ)
+    function matern52_hypers(x, y, θ::AbstractVector)
         r = norm(x - y) / θ[1]
         return (1 + sqrt(5) * r + 5 * r ^ 2 / 3) * exp(-sqrt(5) * r)
     end
@@ -210,7 +231,7 @@ function WhiteNoiseConstructor(σ::AbstractFloat = 1e-6)
         return x == y ? σ : 0.
     end
 
-    function white_noise_hypers(x, y, θ)
+    function white_noise_hypers(x, y, θ::AbstractVector)
         return x == y ? θ[1] : 0.
     end
 
@@ -234,6 +255,24 @@ function gram_matrix(k::Kernel, X::AbstractMatrix; noise = 0.)
     end
 
     return G
+end
+
+
+function gram_matrix_dθ(k::Kernel, X::AbstractMatrix, δθ::AbstractVector)
+    d, N = size(X)
+    δG = zeros(N, N)
+    δk0 = dot(k.dψdθ(zeros(d), zeros(d)), δθ)
+
+    for j = 1:N
+        δG[j, j] = δk0
+        for i = j+1:N
+            δGij = dot(k.dψdθ(X[:, i], X[:, j]), δθ)
+            δG[i, j] = δGij
+            δG[j, i] = δGij
+        end
+    end
+
+    return δG
 end
 
 
