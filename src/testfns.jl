@@ -692,6 +692,15 @@ function TestBohachevsky()
 end
 
 
+function TestAbsoluteValue()
+    f(x) = abs(x[1])
+    ∇f(x) = [x[1] < 0 ? -1 : 1]
+    bounds = [-1.0 1.0]
+    xopt = ([0.0],)
+    return TestFunction(1, bounds, xopt, f, ∇f)
+end
+
+
 function get_test_functions()
     return [
         (TestQuadratic1D(), "Quadratic1D"),
@@ -720,7 +729,8 @@ function get_test_functions()
         (TestShekel(), "Shekel"),
         (TestDropWave(), "DropWave"),
         (TestGriewank(2), "Griewank"),
-        (TestBohachevsky(), "Bohachevsky")
+        (TestBohachevsky(), "Bohachevsky"),
+        (TestAbsoluteValue(), "AbsoluteValue")
     ]
 end
 
