@@ -586,9 +586,18 @@ end
 # Create a test function named TestLinearCosine1D that takes a paramater for the frequency of the cosine
 # and a parameter for the amplitude of the cosine. The function should be a linear function of x plus a cosine
 # function of the form a*cos(b*x). The function should have a single optimum at x=0.
-function TestLinearCosine1D(a=1, b=1; lb=-1.0, ub=1.0)
+function TestLinearWeightedCosine1D(a=1, b=1; lb=-1.0, ub=1.0)
     f(x) = a*first(x) * cos(b*first(x))
     ∇f(x) = [a*cos(b*first(x)) - a*b*first(x)*sin(b*first(x))]
+    bounds = [lb ub]
+    xopt = (zeros(1),) # TODO
+    return TestFunction(1, bounds, xopt, f, ∇f)
+end
+
+
+function TestLinearPlusCosine1D(a=1, b=1; lb=-1.0, ub=1.0)
+    f(x) = a*first(x) + cos(b*first(x))
+    ∇f(x) = [a - sin(b*first(x))*b]
     bounds = [lb ub]
     xopt = (zeros(1),) # TODO
     return TestFunction(1, bounds, xopt, f, ∇f)

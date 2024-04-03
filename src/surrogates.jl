@@ -15,7 +15,7 @@ struct ZeroMeanGaussianProcess
 end
 
 function predictive_mean(gp::ZeroMeanGaussianProcess, x::AbstractVector)
-    KxX = gp.k( x, gp.X)
+    KxX = gp.k(x, gp.X)
     return dot(KxX, gp.c) + gp.ymean
 end
 
@@ -53,7 +53,7 @@ function get_observations(gp::ZeroMeanGaussianProcess)
 end
 
 
-function ZeroMeanGP(k::Kernel, X::AbstractMatrix, y::AbstractVector; noise = 0.)
+function GP(k::Kernel, X::AbstractMatrix, y::AbstractVector; noise = 0.)
     K = gram_matrix(k, X, noise=noise)
     L = cholesky(K).L
     ymean = mean(y)
