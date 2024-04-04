@@ -3,6 +3,9 @@ import Base:+,*
 using LinearAlgebra
 using ForwardDiff
 
+abstract type AbstractKernel end
+
+
 # Add support for maintaining kernel bounds
 struct Kernel
     θ::AbstractVector
