@@ -1,25 +1,26 @@
 import Base.~
 
-
 include("./kernels.jl")
 
+abstract type AbstractGaussianProcess end
+abstract type ExactGaussianProcess <: AbstractGaussianProcess end
 
-struct ZeroMeanGaussianProcess
+
+struct GaussianProcess <: ExactGaussianProcess
     k::Kernel
     X::AbstractMatrix
     K::AbstractMatrix
     L::AbstractMatrix
     y::AbstractVector
     c::AbstractVector
-    ymean::AbstractFloat
 end
 
-function predictive_mean(gp::ZeroMeanGaussianProcess, x::AbstractVector)
+function predictive_mean(gp::GaussianProcess, x::AbstractVector)
     KxX = gp.k(x, gp.X)
-    return dot(KxX, gp.c) + gp.ymean
+    return dot(KxX, gp.c) #+ gp.ymean
 end
 
-function predictive_variance(gp::ZeroMeanGaussianProcess, x::AbstractVector)
+function predictive_variance(gp::GaussianProcess, x::AbstractVector)
     kxx = gp.k(x, x)
     KxX = gp.k(x, gp.X)
     w = gp.L' \ (gp.L \ KxX)
@@ -27,29 +28,29 @@ function predictive_variance(gp::ZeroMeanGaussianProcess, x::AbstractVector)
     return kxx - dot(KxX', w)
 end
 
-function predict(gp::ZeroMeanGaussianProcess, x::AbstractVector)
+function predict(gp::GaussianProcess, x::AbstractVector)
     return predictive_mean(gp, x), predictive_variance(gp, x)
 end
 
-function (gp::ZeroMeanGaussianProcess)(x::AbstractVector)
+function (gp::GaussianProcess)(x::AbstractVector)
     return predict(gp, x)
 end
 
-function sample(gp::ZeroMeanGaussianProcess, x::AbstractVector; gaussian=nothing)
+function sample(gp::GaussianProcess, x::AbstractVector; gaussian=nothing)
     μ, σ = predict(gp, x)
     u = isnothing(gaussian) ? randn() : gaussian
     
     return μ + sqrt(σ) * u
 end
 
-function ~(payload, gp::ZeroMeanGaussianProcess)
+function ~(payload, gp::GaussianProcess)
     x, gaussian = typeof(payload) <: Tuple ? payload : (payload, nothing)
 
     return sample(gp, x, gaussian=gaussian)
 end
 
-function get_observations(gp::ZeroMeanGaussianProcess)
-    return gp.y .+ gp.ymean
+function get_observations(gp::GaussianProcess)
+    return gp.y
 end
 
 
@@ -57,14 +58,14 @@ function GP(k::Kernel, X::AbstractMatrix, y::AbstractVector; noise = 0.)
     K = gram_matrix(k, X, noise=noise)
     L = cholesky(K).L
     ymean = mean(y)
-    y = y .- ymean
+    # y = y .- ymean
     c = L' \ (L \ y)
 
-    return ZeroMeanGaussianProcess(k, X, K, L, y, c, ymean)
+    return GaussianProcess(k, X, K, L, y, c)#, ymean)
 end
 
 
-function log_likelihood(gp::ZeroMeanGaussianProcess)
+function log_likelihood(gp::GaussianProcess)
     N = length(gp.y)
 
     data_fit = -.5(dot(gp.y, gp.c))
@@ -75,7 +76,7 @@ function log_likelihood(gp::ZeroMeanGaussianProcess)
 end
 
 
-function δlog_likelihood(gp::ZeroMeanGaussianProcess, δθ::AbstractVector)
+function δlog_likelihood(gp::GaussianProcess, δθ::AbstractVector)
     d, N = size(gp.X)
     δK = gram_matrix_dθ(gp.k, gp.X, δθ)
 
@@ -83,7 +84,7 @@ function δlog_likelihood(gp::ZeroMeanGaussianProcess, δθ::AbstractVector)
 end
 
 
-function ∇log_likelihood(gp::ZeroMeanGaussianProcess)
+function ∇log_likelihood(gp::GaussianProcess)
     nθ = length(gp.k.θ)
     δθ = zeros(nθ)
     ∇L = zeros(nθ)
@@ -98,7 +99,7 @@ function ∇log_likelihood(gp::ZeroMeanGaussianProcess)
 end
 
 
-function plot1d(gp::ZeroMeanGaussianProcess; interval::AbstractRange)
+function plot1d(gp::GaussianProcess; interval::AbstractRange)
     fx = zeros(length(interval))
     stdx = zeros(length(interval))
     normal_sample = randn()
