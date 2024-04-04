@@ -2,18 +2,6 @@ include("kernels.jl")
 include("surrogates.jl")
 
 
-function UCB_constructor(s::ZeroMeanGaussianProcess)
-    function UCB(β::AbstractFloat)
-        function UCB(x::AbstractVector)
-            μ, σ = predict(s, x)
-            return μ + β * sqrt(σ)
-        end
-    end
-
-    return UCB
-end
-
-
 function log_likelihood_constructor(kernel_constructor, X, y; noise=0.)
     function _log_likelihood(θ::AbstractVector)
         sur = GP(kernel_constructor(θ), X, y, noise=noise)
