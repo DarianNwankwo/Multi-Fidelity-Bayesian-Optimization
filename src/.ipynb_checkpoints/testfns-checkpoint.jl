@@ -1,5 +1,43 @@
+import Base:+, *
+
 # https://www.sfu.ca/~ssurjano/optimization.html
 # https://en.wikipedia.org/wiki/Test_functions_for_optimization
+
+struct MultiFidelityTestFunction
+    dim
+    bounds
+    xopt
+    fs
+end
+
+function TestPark()
+    fs = Vector{Any}()
+
+    function highest_fidelity(x)
+        term2 = 1 + (x[2] + x[3]^2)*(x[4] / x[1]^2)
+        term1 = (x[1] / 2) * (sqrt(term2) - 1)
+        term3 = (x[1] + 3x[4]) * exp(1 + sin(x[3]))
+        return term1 + term3
+    end
+
+    function lowest_fidelity(x)
+        term1 = (1 + sin(x[1] / 10.)) * highest_fidelity(x)
+        term2 = 2x[1] + x[2]^2 + x[3]^2 + .5
+        return term1 - term2
+    end
+
+    # Fidelity is increasing in the index
+    push!(fs, lowest_fidelity)
+    push!(fs, highest_fidelity)
+
+    bounds = zeros(4, 2)
+    bounds[:, 1] .= 0.
+    bounds[:, 2] .= 1.
+
+    xopt = ((0., 0., 0., .5),)
+
+    return MultiFidelityTestFunction(4, bounds, xopt, fs)
+end
 
 struct TestFunction
     dim
@@ -7,6 +45,44 @@ struct TestFunction
     xopt
     f
     ∇f
+end
+
+function get_collapsed_bounds(t1::TestFunction, t2::TestFunction)
+    closest_to_origin(x::AbstractVector) = x[findmin(abs, x)[2]]
+
+    bounds = zeros(t1.dim, 2)
+    union_lowerbounds = [t1.bounds[:, 1] t2.bounds[:, 1]]
+    union_upperbounds = [t1.bounds[:, 2] t2.bounds[:, 2]]
+
+    for i = 1:t1.dim
+        bounds[i, 1] = closest_to_origin(union_lowerbounds[i, :])
+        bounds[i, 2] = closest_to_origin(union_upperbounds[i, :])
+    end
+
+    return bounds
+end
+
+
+function +(t1::TestFunction, t2::TestFunction)
+    @assert t1.dim == t2.dim "dim(t1) must equal dim(t2)"
+    return TestFunction(
+        t1.dim,
+        get_collapsed_bounds(t1, t2),
+        (zeros(t1.dim),),
+        (x) -> t1.f(x) + t2.f(x),
+        (x) -> t1.∇f(x) + t2.∇f(x)
+    )
+end
+
+function *(t1::TestFunction, t2::TestFunction)
+    @assert t1.dim == t2.dim "dim(t1) must equal dim(t2)"
+    return TestFunction(
+        t1.dim,
+        get_collapsed_bounds(t1, t2),
+        (zeros(t1.dim),),
+        (x) -> t1.f(x) * t2.f(x),
+        (x) -> t1.f(x) * t2.∇f(x) + t1.∇f(x) * t2.f(x)
+    )
 end
 
 
@@ -41,7 +117,7 @@ function apply_shift(testfn::TestFunction, s::Number)
 end
 
 
-function tplot(f :: TestFunction)
+function tplot(f::TestFunction; st=:contour)
     if f.dim == 1
         xx = range(f.bounds[1,1], f.bounds[1,2], length=250)
         plot(xx, (x) -> f([x]), label="f(x)")
@@ -49,7 +125,7 @@ function tplot(f :: TestFunction)
     elseif f.dim == 2
         xx = range(f.bounds[1,1], f.bounds[1,2], length=100)
         yy = range(f.bounds[2,1], f.bounds[2,2], length=100)
-        plot(xx, yy, (x,y) -> f([x,y]), st=:contour)
+        plot(xx, yy, (x,y) -> f([x,y]), st=st)
         scatter!([xy[1] for xy in f.xopt], [xy[2] for xy in f.xopt], label="xopt")
         # scatter!([f.xopt[1]], [f.xopt[2]], label="xopt")
     else
@@ -510,9 +586,18 @@ end
 # Create a test function named TestLinearCosine1D that takes a paramater for the frequency of the cosine
 # and a parameter for the amplitude of the cosine. The function should be a linear function of x plus a cosine
 # function of the form a*cos(b*x). The function should have a single optimum at x=0.
-function TestLinearCosine1D(a=1, b=1; lb=-1.0, ub=1.0)
+function TestLinearWeightedCosine1D(a=1, b=1; lb=-1.0, ub=1.0)
     f(x) = a*first(x) * cos(b*first(x))
     ∇f(x) = [a*cos(b*first(x)) - a*b*first(x)*sin(b*first(x))]
+    bounds = [lb ub]
+    xopt = (zeros(1),) # TODO
+    return TestFunction(1, bounds, xopt, f, ∇f)
+end
+
+
+function TestLinearPlusCosine1D(a=1, b=1; lb=-1.0, ub=1.0)
+    f(x) = a*first(x) + cos(b*first(x))
+    ∇f(x) = [a - sin(b*first(x))*b]
     bounds = [lb ub]
     xopt = (zeros(1),) # TODO
     return TestFunction(1, bounds, xopt, f, ∇f)
@@ -616,12 +701,23 @@ function TestBohachevsky()
 end
 
 
-function get_random_testfn()
-    testfns = [
+function TestAbsoluteValue()
+    f(x) = abs(x[1])
+    ∇f(x) = [x[1] < 0 ? -1 : 1]
+    bounds = [-1.0 1.0]
+    xopt = ([0.0],)
+    return TestFunction(1, bounds, xopt, f, ∇f)
+end
+
+
+function get_test_functions()
+    return [
+        (TestQuadratic1D(), "Quadratic1D"),
         (TestBraninHoo(), "BraninHoo"),
         (TestRosenbrock(), "Rosenbrock"),
-        (TestRastrigin(2), "Rastrigin"),
-        (TestAckley(2), "Ackley"),
+        (TestRastrigin(1), "Rastrigin"),
+        (TestAckley(2), "Ackley2D"),
+        (TestAckley(1), "Ackley1D"),
         (TestSixHump(), "SixHump"),
         (TestGramacyLee(), "GramacyLee"),
         (TestGoldsteinPrice(), "GoldsteinPrice"),
@@ -642,7 +738,46 @@ function get_random_testfn()
         (TestShekel(), "Shekel"),
         (TestDropWave(), "DropWave"),
         (TestGriewank(2), "Griewank"),
-        (TestBohachevsky(), "Bohachevsky")
+        (TestBohachevsky(), "Bohachevsky"),
+        (TestAbsoluteValue(), "AbsoluteValue")
     ]
+end
+
+function get_random_testfn()
+    testfns = get_test_functions()
     return testfns[rand(1:length(testfns))]
+end
+
+
+function get_dense_grid(f::TestFunction; Δx=0.01)
+    return first(f.bounds[:, 1]):Δx:first(f.bounds[:, 2])
+end
+
+function randsample(N, d, lbs, ubs)
+    X = zeros(d, N)
+    for j = 1:N
+        for i = 1:d
+            X[i,j] = rand(Uniform(lbs[i], ubs[i]))
+        end
+    end
+    return X
+end
+
+
+function get_toy_problem(;N=1, fn_name=nothing)
+    if isnothing(fn_name)
+        testfn, testfn_name = get_random_testfn()
+    else
+        all_testfns = get_test_functions()
+        for pair in all_testfns
+            if pair[2] == fn_name
+                testfn, testfn_name = pair
+            end
+        end
+    end
+
+    X = randsample(N, testfn.dim, testfn.bounds[:, 1], testfn.bounds[:, 2])
+    y = testfn(X)
+
+    return (fn=testfn, name=testfn_name, input=X, output=y)
 end

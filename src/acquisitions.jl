@@ -1,8 +1,11 @@
+include("kernels.jl")
+include("surrogates.jl")
+
 struct AcquisitionFunction{T}
     f::T
 end
 
-function UCB(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
+function UCB(s::GaussianProcess; β=1., err=1e-6)
     UCBx(x::Float64) = begin
         sx = s
         if sx.σ <= err
@@ -13,7 +16,7 @@ function UCB(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
     return AcquisitionFunction(UCBx)
 end
 
-function LCB(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
+function LCB(s::GaussianProcess; β=1., err=1e-6)
     LCBx(x::Float64) = begin
         sx = s
         if sx.σ <= err
@@ -24,7 +27,7 @@ function LCB(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
     return AcquisitionFunction(LCBx)
 end
 
-function POI(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
+function POI(s::GaussianProcess; β=1., err=1e-6)
     f⁺ = minimum(s.y)
     POIx(x::Float64) = begin
         sx = s
@@ -37,7 +40,7 @@ function POI(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
     return AcquisitionFunction(POIx)
 end
 
-function EI(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
+function EI(s::GaussianProcess; β=1., err=1e-6)
     f⁺ = minimum(s.y)
     EIx(x::Float64) = begin
         sx = s
@@ -52,7 +55,7 @@ function EI(s::ZeroMeanGaussianProcess; β=1., err=1e-6)
     return AcquisitionFunction(EIx)
 end
 
-function get_acquisition_functions(sur::ZeroMeanGaussianProcess; β=1., err=1e-6)
+function get_acquisition_functions(sur::GaussianProcess; β=1., err=1e-6)
     return Dict(
         "Expected Improvement" => EI(sur; β=β, err=err),
         "Probability of Improvement" => POI(sur; β=β, err=err),
@@ -61,7 +64,7 @@ function get_acquisition_functions(sur::ZeroMeanGaussianProcess; β=1., err=1e-6
     )
 end
 
-function get_random_acquisitionfn(sur::ZeroMeanGaussianProcess; β=1., err=1e-6)
+function get_random_acquisitionfn(sur::GaussianProcess; β=1., err=1e-6)
     testfns = get_acquisition_functions(sur; β=β, err=err)
     names = collect(keys(testfns))
     rand_name = names[rand(1:length(names))]

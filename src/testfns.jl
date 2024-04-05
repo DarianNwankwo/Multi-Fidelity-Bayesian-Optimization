@@ -753,6 +753,16 @@ function get_dense_grid(f::TestFunction; Δx=0.01)
     return first(f.bounds[:, 1]):Δx:first(f.bounds[:, 2])
 end
 
+function randsample(N, d, lbs, ubs)
+    X = zeros(d, N)
+    for j = 1:N
+        for i = 1:d
+            X[i,j] = rand(Uniform(lbs[i], ubs[i]))
+        end
+    end
+    return X
+end
+
 
 function get_toy_problem(;N=1, fn_name=nothing)
     if isnothing(fn_name)
