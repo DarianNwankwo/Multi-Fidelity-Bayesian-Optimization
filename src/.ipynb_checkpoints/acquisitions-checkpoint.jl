@@ -7,22 +7,22 @@ end
 
 function UCB(s::GaussianProcess; β=1., err=1e-6)
     UCBx(x::Float64) = begin
-        sx = s
-        if sx.σ <= err
+        μ, σ = predict(s, [x])
+        if σ <= err
             return NaN # Return NaN when standard deviation is too low
         end
-        return sx.μ + β * sx.σ
+        return μ + β * σ
     end
     return AcquisitionFunction(UCBx)
 end
 
 function LCB(s::GaussianProcess; β=1., err=1e-6)
     LCBx(x::Float64) = begin
-        sx = s
-        if sx.σ <= err
+        μ, σ = predict(s, [x])
+        if σ <= err
             return NaN # Return NaN when standard deviation is too low
         end
-        return sx.μ - β * sx.σ
+        return μ - β * σ
     end
     return AcquisitionFunction(LCBx)
 end
@@ -30,11 +30,11 @@ end
 function POI(s::GaussianProcess; β=1., err=1e-6)
     f⁺ = minimum(s.y)
     POIx(x::Float64) = begin
-        sx = s
-        if sx.σ <= err
+        μ, σ = predict(s, [x])
+        if σ <= err
             return 0 # Return 0 when standard deviation is too low
         end
-        Φx = cdf(Normal(), z(sx.μ, sx.σ, f⁺; β=β))
+        Φx = cdf(Normal(), z(μ, σ, f⁺; β=β))
         return Φx
     end
     return AcquisitionFunction(POIx)
@@ -43,14 +43,14 @@ end
 function EI(s::GaussianProcess; β=1., err=1e-6)
     f⁺ = minimum(s.y)
     EIx(x::Float64) = begin
-        sx = s
-        if sx.σ <= err
+        μ, σ = predict(s, [x])
+        if σ <= err
             return 0 # Return 0 when standard deviation is too low
         end
-        zx = z(sx.μ, sx.σ, f⁺; β=β)
+        zx = z(μ, σ, f⁺; β=β)
         Φx = cdf(Normal(), zx)
         ϕx = pdf(Normal(), zx)
-        return (zx * sx.σ) * Φx + sx.σ * ϕx
+        return (zx * σ) * Φx + σ * ϕx
     end
     return AcquisitionFunction(EIx)
 end
