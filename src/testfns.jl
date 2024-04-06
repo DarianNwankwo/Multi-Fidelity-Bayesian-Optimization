@@ -10,6 +10,8 @@ struct MultiFidelityTestFunction
     fs
 end
 
+(f :: MultiFidelityTestFunction)(x) = f.f(x)
+
 function TestPark()
     fs = Vector{Any}()
 
