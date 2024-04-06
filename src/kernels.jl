@@ -1,10 +1,4 @@
-import Base:+,*
-
-using LinearAlgebra
-using ForwardDiff
-
 abstract type AbstractKernel end
-
 
 # Add support for maintaining kernel bounds
 struct Kernel
@@ -14,15 +8,23 @@ struct Kernel
     dψdx::Function
     dψdy::Function
     dψdθ::Function
+    """The function that performs the kernel construction."""
     ψconstructor::Function
+    """The function that constructs the kernel object."""
+    constructor::Union{<:Function, Nothing}
+    """Maintain the length of each kernels hyperparameters."""
+    lengths::AbstractVector
 
-    function Kernel(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor)
-        new(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor)
+    function Kernel(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor, constructor, lengths)
+        return new(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor, constructor, lengths)
     end
 end
 
 
-function KernelGeneric(kernel_constructor, θ::AbstractVector)
+length(k::Kernel) = length(k.θ)
+
+
+function KernelGeneric(kernel_constructor, θ::AbstractVector, constructor, lengths)
     kernel_function, kernel_function_hypers = kernel_constructor(θ...)
 
     return Kernel(
@@ -32,8 +34,10 @@ function KernelGeneric(kernel_constructor, θ::AbstractVector)
         (x, y) -> ForwardDiff.gradient(x -> kernel_function(x, y), x),
         (x, y) -> ForwardDiff.gradient(y -> kernel_function(x, y), y),
         (x, y) -> ForwardDiff.gradient(θ -> kernel_function_hypers(x, y, θ), θ),
-        kernel_constructor
-    ) 
+        kernel_constructor,
+        constructor,
+        lengths,
+    )
 end
 
 
@@ -46,7 +50,9 @@ function +(k1::Kernel, k2::Kernel)
         (x, y) -> ForwardDiff.gradient(x -> k1(x, y) + k2(x, y), x),
         (x, y) -> ForwardDiff.gradient(y -> k1(x, y) + k2(x, y), y),
         (x, y) -> ForwardDiff.gradient(θ -> k1.ψh(x, y, θ[1:length(k1.θ)]) + k2.ψh(x, y, θ[length(k1.θ)+1:end]), [k1.θ; k2.θ]),
-        k1.ψconstructor
+        (θ) -> k1.ψconstructor(θ[1:length(k1.θ)]) + k2.ψconstructor(θ[length(k1.θ)+1:end]),
+        nothing,
+        vcat(k1.lengths, k2.lengths),
     )
 end
 
@@ -58,7 +64,9 @@ function *(k1::Kernel, k2::Kernel)
         (x, y) -> ForwardDiff.gradient(x -> k1(x, y) * k2(x, y), x),
         (x, y) -> ForwardDiff.gradient(y -> k1(x, y) * k2(x, y), y),
         (x, y) -> ForwardDiff.gradient(θ -> k1.ψh(x, y, θ[1:length(k1.θ)]) * k2.ψh(x, y, θ[length(k1.θ)+1:end]), [k1.θ; k2.θ]),
-        k1.ψconstructor
+        (θ) -> k1.ψconstructor(θ[1:length(k1.θ)]) * k2.ψconstructor(θ[length(k1.θ)+1:end]),
+        nothing,
+        vcat(k1.lengths, k2.lengths),
     )
 end
 
@@ -74,9 +82,75 @@ function *(α::Real, k::Kernel)
         (x, y) -> ForwardDiff.gradient(x -> α * kernel_function(x, y), x),
         (x, y) -> ForwardDiff.gradient(y -> α * kernel_function(x, y), y),
         (x, y) -> ForwardDiff.gradient(θ -> α * kernel_function_hypers(x, y, θ), k.θ),
-        k.ψconstructor
+        (θ) -> α * k.ψconstructor(θ), # Should be a function that returns the kernel constructor scaled by α
+        (θ) -> α * k.constructor(θ),
+        k.lengths,
     )
 end
+
+
+################################################################################
+# Logic for reconstructing sum and product kernels using inorder traversal of 
+# the expression tree.
+################################################################################
+KERNEL_ADD = +
+KERNEL_MULTIPLY = *
+
+"""
+We need a representation that allows us to construct experession trees. An experession tree is a tree
+where the leaves are variables and the internal nodes are operations. The payload at each node is either
+a kernel constructor, in our instance, or an operation. We dinstinguise between the two by noting leaf nodes
+represent kernel constructors and internal nodes represent operations.
+
+TASKS:
+- [ ] Inorder traversal algorithm for reconstructing kernels
+    When we inorder traverse the expression tree, we'll need to propagate the indices of the hyperparameters
+    to the leaf nodes. This will allow us to reconstruct the kernel object with the correct hyperparameters.
+- [ ] Addition and multiplication should be used to build the expression tree then we use inorder traversal to 
+    construct the kernel object.
+"""
+mutable struct Node{T <: Union{Function, Kernel}}
+    payload::T
+    left::Union{<:Node, Nothing}
+    right::Union{<:Node, Nothing}
+end
+Node(payload::T, left=nothing, right=nothing) where T <: Union{Function, Kernel} = Node{T}(payload, left, right)
+Node(payload::T, left, right) where T <: Union{Function, Kernel} = Node{T}(payload, left, right)
+is_leaf(node::Node) = isnothing(node.left) && isnothing(node.right)
+is_internal(node::Node) = !is_leaf(node)
+
+"""
+We use inorder_traversal to reconstruct a kernel object from an expression tree with user provided hyperparameters.
+We also need a mechanism for constructing the kernel object
+"""
+function inorder_traversal(node::Node, θ::AbstractVector, previous_observed::Int = 0)
+    if is_leaf(node)
+        slice = previous_observed+1:previous_observed+length(node.payload.θ)
+        return node.payload.constructor(θ[slice], nodify=false)
+    else
+        left = inorder_traversal(node.left, θ, previous_observed)
+        right = inorder_traversal(node.right, θ, previous_observed + length(left.θ))
+        return node.payload(left, right)
+    end
+end
+
+function inorder_traversal(node::Node)
+    if is_leaf(node)
+        return node.payload
+    else
+        left = inorder_traversal(node.left)
+        right = inorder_traversal(node.right)
+        return node.payload(left, right)
+    end
+end
+
+
++(left::Node, right::Node) = Node(KERNEL_ADD, left, right)
++(left::Node, right::Kernel) = Node(KERNEL_ADD, left, Node(right))
++(left::Kernel, right::Node) = Node(KERNEL_ADD, Node(left), right)
+*(left::Node, right::Node) = Node(KERNEL_MULTIPLY, left, right)
+*(left::Node, right::Kernel) = Node(KERNEL_MULTIPLY, left, Node(right))
+*(left::Kernel, right::Node) = Node(KERNEL_MULTIPLY, Node(left), right)
 
 
 function SquaredExponentialConstructor(lengthscales...)
@@ -97,8 +171,36 @@ function SquaredExponentialConstructor(lengthscales...)
 
     return (squared_exponential, squared_exponential_hypers)
 end
-SquaredExponential(lengthscales::AbstractVector) = KernelGeneric(SquaredExponentialConstructor, lengthscales)
 
+
+function SquaredExponential(lengthscales::AbstractVector; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                SquaredExponentialConstructor, lengthscales, SquaredExponential, [length(lengthscales)]
+            )
+        )
+    end
+    
+    return KernelGeneric(
+        SquaredExponentialConstructor, lengthscales, SquaredExponential, [length(lengthscales)]
+    )
+end
+
+
+function SquaredExponential(lengthscales...; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                SquaredExponentialConstructor, [lengthscales...], SquaredExponential, [length(lengthscales)]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        SquaredExponentialConstructor, [lengthscales...], SquaredExponential, [length(lengthscales)]
+    )
+end
 
 function SquaredExponentialConstructor(lengthscale::AbstractFloat = 1.)
     function squared_exponential(x, y)
@@ -117,7 +219,20 @@ function SquaredExponentialConstructor(lengthscale::AbstractFloat = 1.)
 
     return (squared_exponential, squared_exponential_hypers)
 end
-SquaredExponential(lengthscale::AbstractFloat = 1.) = KernelGeneric(SquaredExponentialConstructor, [lengthscale])
+
+function SquaredExponential(lengthscale::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                SquaredExponentialConstructor, [lengthscale], SquaredExponential, [1]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        SquaredExponentialConstructor, [lengthscale], SquaredExponential, [1]
+    )
+end
 
 
 function PeriodicConstructor(lengthscale::AbstractFloat = 1., period::AbstractFloat = 1.)
@@ -131,7 +246,34 @@ function PeriodicConstructor(lengthscale::AbstractFloat = 1., period::AbstractFl
 
     return (periodic, periodic_hypers)
 end
-Periodic(lengthscale, period) = KernelGeneric(PeriodicConstructor, [lengthscale, period])
+
+function Periodic(lengthscale::AbstractFloat = 1., period::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                PeriodicConstructor, [lengthscale, period], Periodic, [2]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        PeriodicConstructor, [lengthscale, period], Periodic, [2]
+    )
+end
+
+function Periodic(hyperparameters::AbstractVector; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                PeriodicConstructor, hyperparameters, Periodic, [length(hyperparameters)]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        PeriodicConstructor, hyperparameters, Periodic, [length(hyperparameters)]
+    )
+end
 
 
 function ExponentialConstructor(lengthscale::AbstractFloat = 1.)
@@ -145,7 +287,21 @@ function ExponentialConstructor(lengthscale::AbstractFloat = 1.)
 
     return (exponential, exponential_hypers)
 end
-Exponential(lengthscale) = KernelGeneric(ExponentialConstructor, [lengthscale])
+
+
+function Exponential(lengthscale::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                ExponentialConstructor, [lengthscale], Exponential, [1]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        ExponentialConstructor, [lengthscale], Exponential, [1]
+    )
+end
 
 
 function GammaExponentialConstructor(lengthscale::AbstractFloat = 1., γ::AbstractFloat = 1.)
@@ -159,7 +315,21 @@ function GammaExponentialConstructor(lengthscale::AbstractFloat = 1., γ::Abstra
 
     return (gamma_exponential, gamma_exponential_hypers)
 end
-GammaExponential(lengthscale, γ) = KernelGeneric(GammaExponentialConstructor, [lengthscale, γ])
+
+
+function GammaExponential(lengthscale::AbstractFloat = 1., γ::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                GammaExponentialConstructor, [lengthscale, γ], GammaExponential, [2]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        GammaExponentialConstructor, [lengthscale, γ], GammaExponential, [2]
+    )
+end
 
 
 function RationalQuadraticConstructor(lengthscale::AbstractFloat = 1., α::AbstractFloat = 1.)
@@ -173,7 +343,21 @@ function RationalQuadraticConstructor(lengthscale::AbstractFloat = 1., α::Abstr
 
     return (rational_quadratic, rational_quadradic_hypers)
 end
-RationalQuadratic(lengthscale, α) = KernelGeneric(RationalQuadraticConstructor, [lengthscale, α])
+
+
+function RationalQuadratic(lengthscale::AbstractFloat = 1., α::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                RationalQuadraticConstructor, [lengthscale, α], RationalQuadratic, [2]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        RationalQuadraticConstructor, [lengthscale, α], RationalQuadratic, [2]
+    )
+end
 
 
 function Matern12Constructor(lengthscale::AbstractFloat = 1.)
@@ -187,7 +371,21 @@ function Matern12Constructor(lengthscale::AbstractFloat = 1.)
 
     return (matern12, matern12_hypers)
 end
-Matern12(lengthscale = 1.) = KernelGeneric(Matern12Constructor, [lengthscale])
+
+
+function Matern12(lengthscale::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                Matern12Constructor, [lengthscale], Matern12, [1]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        Matern12Constructor, [lengthscale], Matern12, [1]
+    )
+end
 
 
 function Matern32Constructor(lengthscale::AbstractFloat = 1.)
@@ -203,7 +401,21 @@ function Matern32Constructor(lengthscale::AbstractFloat = 1.)
 
     return (matern32, matern32_hypers)
 end
-Matern32(lengthscale = 1.) = KernelGeneric(Matern32Constructor, [lengthscale])
+
+
+function Matern32(lengthscale::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                Matern32Constructor, [lengthscale], Matern32, [1]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        Matern32Constructor, [lengthscale], Matern32, [1]
+    )
+end
 
 
 function Matern52Constructor(lengthscale::AbstractFloat = 1.)
@@ -219,7 +431,21 @@ function Matern52Constructor(lengthscale::AbstractFloat = 1.)
 
     return (matern52, matern52_hypers)
 end
-Matern52(lengthscale = 1.) = KernelGeneric(Matern52Constructor, [lengthscale])
+
+
+function Matern52(lengthscale::AbstractFloat = 1.; nodify=true)
+    if nodify
+        return Node(
+            KernelGeneric(
+                Matern52Constructor, [lengthscale], Matern52, [1]
+            )
+        )
+    end
+
+    return KernelGeneric(
+        Matern52Constructor, [lengthscale], Matern52, [1]
+    )
+end
 
 
 function WhiteNoiseConstructor(σ::AbstractFloat = 1e-6)
@@ -233,10 +459,13 @@ function WhiteNoiseConstructor(σ::AbstractFloat = 1e-6)
 
     return (white_noise, white_noise_hypers)
 end
-WhiteNoise(σ = 1e-6) = KernelGeneric(WhiteNoiseConstructor, [σ])
+WhiteNoise(σ = 1e-6) = KernelGeneric(
+    WhiteNoiseConstructor, [σ], WhiteNoise, [1]
+)
 
 
-function gram_matrix(k::Kernel, X::AbstractMatrix; noise = 0.)
+function gram_matrix(k::Union{Kernel, <:Node}, X::AbstractMatrix; noise = 0.)
+    if isa(k, Node) k = inorder_traversal(k) end
     d, N = size(X)
     G = zeros(N, N)
     k0 = k(zeros(d), zeros(d))
@@ -254,7 +483,8 @@ function gram_matrix(k::Kernel, X::AbstractMatrix; noise = 0.)
 end
 
 
-function gram_matrix_dθ(k::Kernel, X::AbstractMatrix, δθ::AbstractVector)
+function gram_matrix_dθ(k::Union{Kernel, <:Node}, X::AbstractMatrix, δθ::AbstractVector)
+    if isa(k, Node) k = inorder_traversal(k) end
     d, N = size(X)
     δG = zeros(N, N)
     δk0 = dot(k.dψdθ(zeros(d), zeros(d)), δθ)
@@ -272,7 +502,8 @@ function gram_matrix_dθ(k::Kernel, X::AbstractMatrix, δθ::AbstractVector)
 end
 
 
-function kernel_vector(k::Kernel, x::AbstractVector, X::AbstractMatrix)
+function kernel_vector(k::Union{Kernel, <:Node}, x::AbstractVector, X::AbstractMatrix)
+    if isa(k, Node) k = inorder_traversal(k) end
     d, N = size(X)
     KxX = zeros(N)
 
@@ -283,4 +514,4 @@ function kernel_vector(k::Kernel, x::AbstractVector, X::AbstractMatrix)
     return KxX
 end
 
-(k::Kernel)(x::AbstractVector, X::AbstractMatrix) = kernel_vector(k, x, X)
+(k::Union{Kernel, <:Node})(x::AbstractVector, X::AbstractMatrix) = kernel_vector(k, x, X)

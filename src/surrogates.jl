@@ -1,23 +1,22 @@
 import Base.~
 
-include("./kernels.jl")
-
 abstract type AbstractGaussianProcess end
 abstract type ExactGaussianProcess <: AbstractGaussianProcess end
 
 
 struct GaussianProcess <: ExactGaussianProcess
-    k::Kernel
+    k::Union{Kernel, <:Node}
     X::AbstractMatrix
     K::AbstractMatrix
     L::AbstractMatrix
     y::AbstractVector
     c::AbstractVector
+    σn2::AbstractFloat
 end
 
 function predictive_mean(gp::GaussianProcess, x::AbstractVector)
     KxX = gp.k(x, gp.X)
-    return dot(KxX, gp.c) #+ gp.ymean
+    return dot(KxX, gp.c)
 end
 
 function predictive_variance(gp::GaussianProcess, x::AbstractVector)
@@ -54,14 +53,24 @@ function get_observations(gp::GaussianProcess)
 end
 
 
-function GP(k::Kernel, X::AbstractMatrix, y::AbstractVector; noise = 0.)
+function GP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0.)
+    if isa(k, Node) k = inorder_traversal(k) end
     K = gram_matrix(k, X, noise=noise)
     L = cholesky(K).L
-    ymean = mean(y)
-    # y = y .- ymean
     c = L' \ (L \ y)
 
-    return GaussianProcess(k, X, K, L, y, c)#, ymean)
+    return GaussianProcess(k, X, K, L, y, c, noise)
+end
+
+
+function update(gp::GaussianProcess, x::AbstractVector, y::AbstractFloat)
+    X = hcat(gp.X, x)
+    y = vcat(gp.y, y)
+    K = gram_matrix(gp.k, X, noise=gp.σn2)  
+    L = cholesky(K).L
+    c = L' \ (L \ y)
+
+    return GaussianProcess(gp.k, X, K, L, y, c, gp.σn2)
 end
 
 

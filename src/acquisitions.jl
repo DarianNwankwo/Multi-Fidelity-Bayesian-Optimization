@@ -1,6 +1,3 @@
-include("kernels.jl")
-include("surrogates.jl")
-
 struct AcquisitionFunction{T}
     f::T
 end

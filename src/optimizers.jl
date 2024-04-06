@@ -1,16 +1,19 @@
-include("kernels.jl")
-include("surrogates.jl")
-
-
-function log_likelihood_constructor(kernel_constructor, X, y; noise=0.)
+"""
+We need the kernel object so we can reconstruct it with different paramters during optimization.
+The kernel object, if composed of sum or products, maintains all of the necessary information
+to reconstruct a new kernel object with different hyperparameters.
+"""
+function log_likelihood_constructor(kernel_expression_tree::Node, X::AbstractMatrix, y::AbstractVector; noise=0.)
     function _log_likelihood(θ::AbstractVector)
-        sur = GP(kernel_constructor(θ), X, y, noise=noise)
+        kernel = inorder_traversal(kernel_expression_tree, θ, 0)
+        sur = GP(kernel, X, y, noise=noise)
 
         return -log_likelihood(sur)
     end
     
     function _∇log_likelihood!(g, θ)
-        sur = GP(kernel_constructor(θ), X, y, noise=noise)
+        kernel = inorder_traversal(kernel_expression_tree, θ, 0)
+        sur = GP(kernel, X, y, noise=noise)
         
         g[:] = -∇log_likelihood(sur)
     end
@@ -19,20 +22,20 @@ function log_likelihood_constructor(kernel_constructor, X, y; noise=0.)
 end
 
 function optimize_surrogate(;
-    gp::ZeroMeanGaussianProcess,
-    kernel_constructor::Function,
+    gp::GaussianProcess,
+    kernel_expression_tree::Node,
     lbs::AbstractVector,
     ubs::AbstractVector,
     noise::AbstractFloat = 0.,
     random_restarts = 6,
-    max_iterations::Int = 100)
-    f, g! = log_likelihood_constructor(kernel_constructor, gp.X, get_observations(gp), noise=noise)
+    optim_options = Optim.Options())
+    f, g! = log_likelihood_constructor(kernel_expression_tree, gp.X, get_observations(gp), noise=noise)
     results = []
+    θ0s = randsample(random_restarts, length(lbs), lbs, ubs)
 
-    for _ in 1:random_restarts
-        θ0 = rand(length(lbs)) .* (ubs .- lbs) .+ lbs
+    for i in 1:random_restarts
         result = optimize(
-            f, g!, lbs, ubs, θ0, Fminbox(LBFGS()), Optim.Options(iterations = max_iterations)
+            f, g!, lbs, ubs, θ0s[:, i], Fminbox(LBFGS()), optim_options
         )
         push!(results, result)
     end
@@ -41,5 +44,6 @@ function optimize_surrogate(;
     minimums = Optim.minimum.(results)
     global_minimizer = minimizers[argmin(minimums)]
 
-    return GP(kernel_constructor(global_minimizer), gp.X, get_observations(gp), noise=noise)
+    kernel = inorder_traversal(kernel_expression_tree, global_minimizer, 0)
+    return GP(kernel, gp.X, get_observations(gp), noise=noise)
 end
