@@ -4,21 +4,21 @@ abstract type AbstractGaussianProcess end
 abstract type ExactGaussianProcess <: AbstractGaussianProcess end
 
 
-struct GaussianProcess <: ExactGaussianProcess
+struct GaussianProcess{M <: AbstractMatrix, V <: AbstractVector, F <: AbstractFloat} <: ExactGaussianProcess
     k::Union{Kernel, <:Node}
-    X::AbstractMatrix
-    K::AbstractMatrix
-    L::AbstractMatrix
-    y::AbstractVector
-    c::AbstractVector
-    σn2::AbstractFloat
+    X::M
+    K::M
+    L::M
+    y::V
+    c::V
+    σn2::F
 end
 
 
 function GP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0.)
     if isa(k, Node) k = inorder_traversal(k) end
     K = gram_matrix(k, X, noise=noise)
-    L = cholesky(Symmetric(K)).L
+    L = Matrix(cholesky(Symmetric(K)).L)
     c = L' \ (L \ y)
 
     return GaussianProcess(k, X, K, L, y, c, noise)
@@ -87,14 +87,14 @@ function plot1d(gp::GaussianProcess; interval::AbstractRange)
 end
 
 
-mutable struct BoundedCapacityGaussianProcess <: ExactGaussianProcess
+mutable struct BoundedCapacityGaussianProcess{M <: AbstractMatrix, V <: AbstractVector, F <: AbstractFloat} <: ExactGaussianProcess
     k::Union{Kernel, <:Node}
-    X::AbstractMatrix
-    K::AbstractMatrix
-    L::AbstractMatrix
-    y::AbstractVector
-    c::AbstractVector
-    σn2::AbstractFloat
+    X::M
+    K::M
+    L::M
+    y::V
+    c::V
+    σn2::F
     capacity::Int
     observed::Int
 end
@@ -110,7 +110,7 @@ function BoundedGP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVecto
     
     d, N = size(X)
     K[1:N, 1:N] = gram_matrix(k, X, noise=noise)
-    L[1:N, 1:N] = cholesky(K[1:N, 1:N]).L
+    L[1:N, 1:N] = Matrix(cholesky(K[1:N, 1:N]).L)
 
     c = L[1:N, 1:N]' \ (L[1:N, 1:N] \ y)
 
@@ -142,10 +142,23 @@ function predictive_mean(gp::ExactGaussianProcess, x::AbstractVector)
     return dot(KxX, gp.c)
 end
 
+function predictive_mean(gp::BoundedCapacityGaussianProcess, x::AbstractVector)
+    KxX = gp.k(x, gp.X[:, 1:gp.observed])
+    return dot(KxX, gp.c[1:gp.observed])
+end
+
 function predictive_variance(gp::ExactGaussianProcess, x::AbstractVector)
     kxx = gp.k(x, x)
     KxX = gp.k(x, gp.X)
     w = gp.L' \ (gp.L \ KxX)
+
+    return kxx - dot(KxX', w)
+end
+
+function predictive_variance(gp::BoundedCapacityGaussianProcess, x::AbstractVector)
+    kxx = gp.k(x, x)
+    KxX = gp.k(x, gp.X[:, 1:gp.observed])
+    w = gp.L[1:gp.observed, 1:gp.observed]' \ (gp.L[1:gp.observed, 1:gp.observed] \ KxX)
 
     return kxx - dot(KxX', w)
 end
@@ -157,6 +170,7 @@ end
 function (gp::ExactGaussianProcess)(x::AbstractVector)
     return predict(gp, x)
 end
+
 
 function sample(gp::ExactGaussianProcess, x::AbstractVector; gaussian=nothing)
     μ, σ = predict(gp, x)
