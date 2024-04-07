@@ -1,2 +1,2 @@
-.ipynb_checkpoints
-.virtual_documents
+*.ipynb_checkpoints*
+*.virtual_documents*
