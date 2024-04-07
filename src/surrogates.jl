@@ -56,7 +56,7 @@ end
 function GP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0.)
     if isa(k, Node) k = inorder_traversal(k) end
     K = gram_matrix(k, X, noise=noise)
-    L = cholesky(K).L
+    L = cholesky(Symmetric(K)).L
     c = L' \ (L \ y)
 
     return GaussianProcess(k, X, K, L, y, c, noise)
@@ -122,4 +122,34 @@ function plot1d(gp::GaussianProcess; interval::AbstractRange)
     p = plot(interval, fx, ribbons=2stdx, label="μ ± 2σ")
     scatter!(gp.X', get_observations(gp), label="Observations")
     return p
+end
+
+
+struct BoundedCapacityGaussianProcess <: ExactGaussianProcess
+    k::Union{Kernel, <:Node}
+    X::AbstractMatrix
+    K::AbstractMatrix
+    L::AbstractMatrix
+    y::AbstractVector
+    c::AbstractVector
+    σn2::AbstractFloat
+    capacity::Int
+    observed::Int
+end
+
+function BoundedGP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0., capacity = 100)
+    @assert capacity > 0 "Capacity must be greater than 0."
+    @assert size(X, 2) <= capacity "Number of observations must be less than or equal to capacity."
+    if isa(k, Node) k = inorder_traversal(k) end
+    # Preallocate space for covariance and cholesky matrices
+    K = zeros(capacity, capacity)
+    L = zeros(capacity, capacity)
+    
+    d, N = size(X)
+    K[1:N, 1:N] = gram_matrix(k, X, noise=noise)
+    L[1:N, 1:N] = cholesky(K[1:N, 1:N]).L
+
+    c = L[1:N, 1:N]' \ (L[1:N, 1:N] \ y)
+
+    return BoundedCapacityGaussianProcess(k, X, K, L, y, c, noise, capacity, observed)
 end
