@@ -2,18 +2,18 @@ abstract type AbstractKernel end
 
 # Add support for maintaining kernel bounds
 struct Kernel
-    θ::AbstractVector
-    ψ::Function
-    ψh::Function
-    dψdx::Function
-    dψdy::Function
-    dψdθ::Function
+    θ
+    ψ
+    ψh
+    dψdx
+    dψdy
+    dψdθ
     """The function that performs the kernel construction."""
-    ψconstructor::Function
+    ψconstructor
     """The function that constructs the kernel object."""
-    constructor::Union{<:Function, Nothing}
+    constructor
     """Maintain the length of each kernels hyperparameters."""
-    lengths::AbstractVector
+    lengths
 
     function Kernel(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor, constructor, lengths)
         return new(θ, ψ, ψh, dψdx, dψdy, dψdθ, ψconstructor, constructor, lengths)
