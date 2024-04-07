@@ -152,6 +152,8 @@ end
 *(left::Node, right::Kernel) = Node(KERNEL_MULTIPLY, left, Node(right))
 *(left::Kernel, right::Node) = Node(KERNEL_MULTIPLY, Node(left), right)
 
+length(node::Node) = length(inorder_traversal(node).θ)
+
 
 function SquaredExponentialConstructor(lengthscales...)
     ls = [lengthscales...]
@@ -472,9 +474,9 @@ function gram_matrix(k::Union{Kernel, <:Node}, X::AbstractMatrix; noise = 0.)
     noise = WhiteNoise(noise)
 
     for j = 1:N
-        G[j, j] = k0 + noise(X[:, j], X[:, j])
+        G[j, j] = k0 + noise((@view X[:, j]), (@view X[:, j]))
         for i = j+1:N
-            G[i, j] = k(X[:, i], X[:, j])
+            G[i, j] = k((@view X[:, i]), (@view X[:, j]))
             G[j, i] = G[i, j]
         end
     end
@@ -492,7 +494,10 @@ function gram_matrix_dθ(k::Union{Kernel, <:Node}, X::AbstractMatrix, δθ::Abst
     for j = 1:N
         δG[j, j] = δk0
         for i = j+1:N
-            δGij = dot(k.dψdθ(X[:, i], X[:, j]), δθ)
+            δGij = dot(
+                k.dψdθ((@view X[:, i]), (@view X[:, j])),
+                δθ
+            )
             δG[i, j] = δGij
             δG[j, i] = δGij
         end
@@ -508,7 +513,7 @@ function kernel_vector(k::Union{Kernel, <:Node}, x::AbstractVector, X::AbstractM
     KxX = zeros(N)
 
     for j = 1:N
-        KxX[j] = k(x, X[:, j])
+        KxX[j] = k(x, (@view X[:, j]))
     end
 
     return KxX
