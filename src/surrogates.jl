@@ -14,44 +14,6 @@ struct GaussianProcess <: ExactGaussianProcess
     σn2::AbstractFloat
 end
 
-function predictive_mean(gp::GaussianProcess, x::AbstractVector)
-    KxX = gp.k(x, gp.X)
-    return dot(KxX, gp.c)
-end
-
-function predictive_variance(gp::GaussianProcess, x::AbstractVector)
-    kxx = gp.k(x, x)
-    KxX = gp.k(x, gp.X)
-    w = gp.L' \ (gp.L \ KxX)
-
-    return kxx - dot(KxX', w)
-end
-
-function predict(gp::GaussianProcess, x::AbstractVector)
-    return predictive_mean(gp, x), predictive_variance(gp, x)
-end
-
-function (gp::GaussianProcess)(x::AbstractVector)
-    return predict(gp, x)
-end
-
-function sample(gp::GaussianProcess, x::AbstractVector; gaussian=nothing)
-    μ, σ = predict(gp, x)
-    u = isnothing(gaussian) ? randn() : gaussian
-    
-    return μ + sqrt(σ) * u
-end
-
-function ~(payload, gp::GaussianProcess)
-    x, gaussian = typeof(payload) <: Tuple ? payload : (payload, nothing)
-
-    return sample(gp, x, gaussian=gaussian)
-end
-
-function get_observations(gp::GaussianProcess)
-    return gp.y
-end
-
 
 function GP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0.)
     if isa(k, Node) k = inorder_traversal(k) end
@@ -125,7 +87,7 @@ function plot1d(gp::GaussianProcess; interval::AbstractRange)
 end
 
 
-struct BoundedCapacityGaussianProcess <: ExactGaussianProcess
+mutable struct BoundedCapacityGaussianProcess <: ExactGaussianProcess
     k::Union{Kernel, <:Node}
     X::AbstractMatrix
     K::AbstractMatrix
@@ -136,6 +98,7 @@ struct BoundedCapacityGaussianProcess <: ExactGaussianProcess
     capacity::Int
     observed::Int
 end
+
 
 function BoundedGP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0., capacity = 100)
     @assert capacity > 0 "Capacity must be greater than 0."
@@ -151,5 +114,79 @@ function BoundedGP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVecto
 
     c = L[1:N, 1:N]' \ (L[1:N, 1:N] \ y)
 
-    return BoundedCapacityGaussianProcess(k, X, K, L, y, c, noise, capacity, observed)
+    return BoundedCapacityGaussianProcess(k, X, K, L, y, c, noise, capacity, N)
+end
+
+
+function update!(gp::BoundedCapacityGaussianProcess, x::AbstractVector, y::AbstractFloat)
+    if gp.observed == gp.capacity
+        gp.X = hcat(gp.X[:, 2:end], x)
+        gp.y = vcat(gp.y[2:end], y)
+    else
+        gp.X = hcat(gp.X, x)
+        gp.y = vcat(gp.y, y)
+        gp.observed += 1
+    end
+
+    # Naive update of covariance and cholesky matrices
+    gp.K[1:gp.observed, 1:gp.observed] = gram_matrix(gp.k, gp.X[:, 1:gp.observed], noise=gp.σn2)
+    gp.L[1:gp.observed, 1:gp.observed] = cholesky(gp.K[1:gp.observed, 1:gp.observed]).L
+    gp.c = gp.L[1:gp.observed, 1:gp.observed]' \ (gp.L[1:gp.observed, 1:gp.observed] \ gp.y)
+
+    return gp
+end
+
+
+function predictive_mean(gp::ExactGaussianProcess, x::AbstractVector)
+    KxX = gp.k(x, gp.X)
+    return dot(KxX, gp.c)
+end
+
+function predictive_variance(gp::ExactGaussianProcess, x::AbstractVector)
+    kxx = gp.k(x, x)
+    KxX = gp.k(x, gp.X)
+    w = gp.L' \ (gp.L \ KxX)
+
+    return kxx - dot(KxX', w)
+end
+
+function predict(gp::ExactGaussianProcess, x::AbstractVector)
+    return predictive_mean(gp, x), predictive_variance(gp, x)
+end
+
+function (gp::ExactGaussianProcess)(x::AbstractVector)
+    return predict(gp, x)
+end
+
+function sample(gp::ExactGaussianProcess, x::AbstractVector; gaussian=nothing)
+    μ, σ = predict(gp, x)
+    u = isnothing(gaussian) ? randn() : gaussian
+    
+    return μ + sqrt(σ) * u
+end
+
+function ~(payload, gp::ExactGaussianProcess)
+    x, gaussian = typeof(payload) <: Tuple ? payload : (payload, nothing)
+
+    return sample(gp, x, gaussian=gaussian)
+end
+
+function get_observations(gp::ExactGaussianProcess)
+    return gp.y
+end
+
+function plot1d(gp::ExactGaussianProcess; interval::AbstractRange)
+    fx = zeros(length(interval))
+    stdx = zeros(length(interval))
+    normal_sample = randn()
+
+    for (i, x) in enumerate(interval)
+        μx, σx = gp([x])
+        fx[i] = μx
+        stdx[i] = sqrt(σx)
+    end
+
+    p = plot(interval, fx, ribbons=2stdx, label="μ ± 2σ")
+    scatter!(gp.X', get_observations(gp), label="Observations")
+    return p
 end
