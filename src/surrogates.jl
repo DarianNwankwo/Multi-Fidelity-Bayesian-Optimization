@@ -25,11 +25,61 @@ function GP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; nois
 end
 
 
-function update(gp::GaussianProcess, x::AbstractVector, y::AbstractFloat)
+function naive_update(gp::GaussianProcess, x::AbstractVector, y::AbstractFloat)
     X = hcat(gp.X, x)
     y = vcat(gp.y, y)
     K = gram_matrix(gp.k, X, noise=gp.σn2)  
-    L = cholesky(K).L
+    L = Matrix(cholesky(K).L)
+    c = L' \ (L \ y)
+
+    return GaussianProcess(gp.k, X, K, L, y, c, gp.σn2)
+end
+
+
+function naive_update(gp::GaussianProcess, X::AbstractMatrix, y::AbstractVector)
+    X = hcat(gp.X, X)
+    y = vcat(gp.y, y)
+    K = gram_matrix(gp.k, X, noise=gp.σn2)
+    L = Matrix(cholesky(K).L)
+    c = L' \ (L \ y)
+
+    return GaussianProcess(gp.k, X, K, L, y, c, gp.σn2)
+end
+
+
+function schur_update(gp::GaussianProcess, x::AbstractVector, y::AbstractFloat)
+    X = hcat(gp.X, x)
+    y = vcat(gp.y, y)
+    kxX = gp.k(x, gp.X)
+    kxx = gp.k(x, x) + WhiteNoise(gp.σn2)(x, x)
+
+    K = [gp.K kxX
+         kxX'  kxx]
+    L21 = kxX' / gp.L'
+    L22 = first(cholesky(kxx - L21 * L21').L) # This schur complement is a constant
+    zs = zeros(size(gp.L, 1))
+    L = [gp.L  zs
+         L21   L22]
+    c = L' \ (L \ y)
+
+    return GaussianProcess(gp.k, X, K, L, y, c, gp.σn2)
+end
+
+
+function schur_update(gp::GaussianProcess, Xn::AbstractMatrix, yn::AbstractVector)
+    _, N = size(Xn)
+    _, M = size(gp.X)
+    X = hcat(gp.X, Xn)
+    y = vcat(gp.y, yn)
+    KxX = gp.k(Xn, gp.X)
+    Kxx = gp.k(Xn, noise=gp.σn2)
+    K = [gp.K KxX'
+         KxX  Kxx]
+    L21 = KxX / gp.L'
+    L22 = Matrix(cholesky(Kxx - L21 * L21').L)
+    zs = zeros(M, N)
+    L = [gp.L zs
+         L21  L22]
     c = L' \ (L \ y)
 
     return GaussianProcess(gp.k, X, K, L, y, c, gp.σn2)

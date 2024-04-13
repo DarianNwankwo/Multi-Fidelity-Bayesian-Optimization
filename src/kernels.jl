@@ -151,6 +151,7 @@ end
 *(left::Node, right::Node) = Node(KERNEL_MULTIPLY, left, right)
 *(left::Node, right::Kernel) = Node(KERNEL_MULTIPLY, left, Node(right))
 *(left::Kernel, right::Node) = Node(KERNEL_MULTIPLY, Node(left), right)
+(n::Node)(x::AbstractVector, y::AbstractVector) = inorder_traversal(n)(x, y)
 
 length(node::Node) = length(inorder_traversal(node).θ)
 
@@ -483,7 +484,7 @@ function gram_matrix(k::Union{Kernel, <:Node}, X::AbstractMatrix; noise = 0.)
 
     return G
 end
-
+(k::Union{Kernel, <:Node})(X::AbstractMatrix; noise = 0.) = gram_matrix(k, X, noise=noise)
 
 function gram_matrix_dθ(k::Union{Kernel, <:Node}, X::AbstractMatrix, δθ::AbstractVector)
     if isa(k, Node) k = inorder_traversal(k) end
@@ -518,5 +519,19 @@ function kernel_vector(k::Union{Kernel, <:Node}, x::AbstractVector, X::AbstractM
 
     return KxX
 end
-
 (k::Union{Kernel, <:Node})(x::AbstractVector, X::AbstractMatrix) = kernel_vector(k, x, X)
+
+
+function covariance_matrix(k::Union{Kernel, <:Node}, X::AbstractMatrix, Y::AbstractMatrix)
+    if isa(k, Node) k = inorder_traversal(k) end
+    d, N = size(X)
+    _, M = size(Y)
+    K = zeros(N, M)
+
+    for i = 1:N
+        K[i, :] = k((@view X[:, i]), Y)
+    end
+
+    return K
+end
+(k::Union{Kernel, <:Node})(X::AbstractMatrix, Y::AbstractMatrix) = covariance_matrix(k, X, Y)
