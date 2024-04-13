@@ -1,13 +1,10 @@
-include("kernels.jl")
-include("surrogates.jl")
-
 struct AcquisitionFunction{T}
     f::T
 end
 
 function UCB(s::GaussianProcess; β=1., err=1e-6)
-    UCBx(x::Float64) = begin
-        μ, σ = predict(s, [x])
+    UCBx(x::AbstractVector) = begin
+        μ, σ = predict(s, x)
         if σ <= err
             return NaN # Return NaN when standard deviation is too low
         end
@@ -17,8 +14,8 @@ function UCB(s::GaussianProcess; β=1., err=1e-6)
 end
 
 function LCB(s::GaussianProcess; β=1., err=1e-6)
-    LCBx(x::Float64) = begin
-        μ, σ = predict(s, [x])
+    LCBx(x::AbstractVector) = begin
+        μ, σ = predict(s, x)
         if σ <= err
             return NaN # Return NaN when standard deviation is too low
         end
@@ -29,8 +26,8 @@ end
 
 function POI(s::GaussianProcess; β=1., err=1e-6)
     f⁺ = minimum(s.y)
-    POIx(x::Float64) = begin
-        μ, σ = predict(s, [x])
+    POIx(x::AbstractVector) = begin
+        μ, σ = predict(s, x)
         if σ <= err
             return 0 # Return 0 when standard deviation is too low
         end
@@ -42,8 +39,8 @@ end
 
 function EI(s::GaussianProcess; β=1., err=1e-6)
     f⁺ = minimum(s.y)
-    EIx(x::Float64) = begin
-        μ, σ = predict(s, [x])
+    EIx(x::AbstractVector) = begin
+        μ, σ = predict(s, x)
         if σ <= err
             return 0 # Return 0 when standard deviation is too low
         end
