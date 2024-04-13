@@ -1,8 +1,16 @@
-struct AcquisitionFunction{T}
+abstract type AbstractAcquisitionFunction end
+abstract type DifferentiableAcquisitionFunction <: AbstractAcquisitionFunction end
+abstract type AcquisitionFunctionOnly <: AbstractAcquisitionFunction end
+
+struct AcquisitionFunction{T <: Function, V <: AbstractVector} <: AcquisitionFunctionOnly
     f::T
+    lowerbounds::V
+    upperbounds::V
 end
 
-function UCB(s::GaussianProcess; β=1., err=1e-6)
+z(μ, σ, f⁺; β) = (f⁺-μ-β)/σ
+
+function UCB(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     UCBx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
         if σ <= err
@@ -10,10 +18,10 @@ function UCB(s::GaussianProcess; β=1., err=1e-6)
         end
         return μ + β * σ
     end
-    return AcquisitionFunction(UCBx)
+    return AcquisitionFunction(UCBx, lbs, ubs)
 end
 
-function LCB(s::GaussianProcess; β=1., err=1e-6)
+function LCB(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     LCBx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
         if σ <= err
@@ -21,10 +29,10 @@ function LCB(s::GaussianProcess; β=1., err=1e-6)
         end
         return μ - β * σ
     end
-    return AcquisitionFunction(LCBx)
+    return AcquisitionFunction(LCBx, lbs, ubs)
 end
 
-function POI(s::GaussianProcess; β=1., err=1e-6)
+function POI(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     f⁺ = minimum(s.y)
     POIx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
@@ -34,10 +42,10 @@ function POI(s::GaussianProcess; β=1., err=1e-6)
         Φx = cdf(Normal(), z(μ, σ, f⁺; β=β))
         return Φx
     end
-    return AcquisitionFunction(POIx)
+    return AcquisitionFunction(POIx, lbs, ubs)
 end
 
-function EI(s::GaussianProcess; β=1., err=1e-6)
+function EI(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     f⁺ = minimum(s.y)
     EIx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
@@ -47,9 +55,30 @@ function EI(s::GaussianProcess; β=1., err=1e-6)
         zx = z(μ, σ, f⁺; β=β)
         Φx = cdf(Normal(), zx)
         ϕx = pdf(Normal(), zx)
-        return (zx * σ) * Φx + σ * ϕx
+        return -(zx * σ) * Φx + σ * ϕx
     end
-    return AcquisitionFunction(EIx)
+    return AcquisitionFunction(EIx, lbs, ubs)
+end
+
+
+function optimize_acquisition(a::AcquisitionFunctionOnly; random_restarts=16, optim_options=Optim.Options())
+    ALL_STARTS = randsample(random_restarts, length(a.lowerbounds), a.lowerbounds, a.upperbounds)
+    results = []
+
+    for i in 1:random_restarts
+        initial_start = ALL_STARTS[:, i]
+        push!(
+            results,
+            optimize(
+                a.f, a.lowerbounds, a.upperbounds, initial_start, Fminbox(LBFGS()), optim_options
+            )
+        )
+    end
+
+    minimizer_locations = Optim.minimizer.(results)
+    minimizers = Optim.minimum.(results)
+    trash, minimizer_index = findmin(minimizers)
+    return minimizer_locations[minimizer_index]
 end
 
 function get_acquisition_functions(sur::GaussianProcess; β=1., err=1e-6)
@@ -70,9 +99,12 @@ end
 
 function plotaf1d(af::AcquisitionFunction; interval::AbstractRange)
     fx = zeros(length(interval))
-    stdx = zeros(length(interval))
-    normal_sample = randn()
-    p = plot(interval, fx, ribbons=2stdx, label="μ ± 2σ")
+    for i in 1:length(interval)
+        xi = [interval[i]]
+        fx[i] = af.f(xi)
+    end
+    # p = plot(interval, fx, label="${af.name}")
+    p = plot(interval, fx)
     # scatter!(af.X', get_observations(gp), label="Observations")
     return p
 end
