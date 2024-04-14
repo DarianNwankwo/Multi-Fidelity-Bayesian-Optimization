@@ -49,9 +49,9 @@ function EI(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     f⁺ = minimum(s.y)
     EIx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
-        if σ <= err
-            return 0 # Return 0 when standard deviation is too low
-        end
+        # if σ <= err
+        #     return 0 # Return 0 when standard deviation is too low
+        # end
         zx = z(μ, σ, f⁺; β=β)
         Φx = cdf(Normal(), zx)
         ϕx = pdf(Normal(), zx)
