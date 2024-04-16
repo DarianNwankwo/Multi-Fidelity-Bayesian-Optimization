@@ -123,24 +123,35 @@ is_internal(node::Node) = !is_leaf(node)
 We use inorder_traversal to reconstruct a kernel object from an expression tree with user provided hyperparameters.
 We also need a mechanism for constructing the kernel object
 """
-function inorder_traversal(node::Node, θ::AbstractVector, previous_observed::Int = 0)
+function build_kernel(node::Node, θ::AbstractVector, previous_observed::Int = 0)
     if is_leaf(node)
         slice = previous_observed+1:previous_observed+length(node.payload.θ)
         return node.payload.constructor(θ[slice], nodify=false)
     else
-        left = inorder_traversal(node.left, θ, previous_observed)
-        right = inorder_traversal(node.right, θ, previous_observed + length(left.θ))
+        left = build_kernel(node.left, θ, previous_observed)
+        right = build_kernel(node.right, θ, previous_observed + length(left.θ))
         return node.payload(left, right)
     end
 end
 
-function inorder_traversal(node::Node)
+function build_kernel(node::Node)
     if is_leaf(node)
         return node.payload
     else
-        left = inorder_traversal(node.left)
-        right = inorder_traversal(node.right)
+        left = build_kernel(node.left)
+        right = build_kernel(node.right)
         return node.payload(left, right)
+    end
+end
+
+function show_expression(node::Node, current_index = [1])
+    if is_leaf(node)
+        current_index[1] += 1
+        return "k$(current_index[1] - 1)"
+    else
+        left = show_expression(node.left, current_index)
+        right = show_expression(node.right, current_index)
+        return "($left $(string(node.payload)) $right)"
     end
 end
 
@@ -151,9 +162,9 @@ end
 *(left::Node, right::Node) = Node(KERNEL_MULTIPLY, left, right)
 *(left::Node, right::Kernel) = Node(KERNEL_MULTIPLY, left, Node(right))
 *(left::Kernel, right::Node) = Node(KERNEL_MULTIPLY, Node(left), right)
-(n::Node)(x::AbstractVector, y::AbstractVector) = inorder_traversal(n)(x, y)
+(n::Node)(x::AbstractVector, y::AbstractVector) = build_kernel(n)(x, y)
 
-length(node::Node) = length(inorder_traversal(node).θ)
+length(node::Node) = length(build_kernel(node).θ)
 
 
 function SquaredExponentialConstructor(lengthscales...)
@@ -468,7 +479,7 @@ WhiteNoise(σ = 1e-6) = KernelGeneric(
 
 
 function gram_matrix(k::Union{Kernel, <:Node}, X::AbstractMatrix; noise = 0.)
-    if isa(k, Node) k = inorder_traversal(k) end
+    if isa(k, Node) k = build_kernel(k) end
     d, N = size(X)
     G = zeros(N, N)
     k0 = k(zeros(d), zeros(d))
@@ -487,7 +498,7 @@ end
 (k::Union{Kernel, <:Node})(X::AbstractMatrix; noise = 0.) = gram_matrix(k, X, noise=noise)
 
 function gram_matrix_dθ(k::Union{Kernel, <:Node}, X::AbstractMatrix, δθ::AbstractVector)
-    if isa(k, Node) k = inorder_traversal(k) end
+    if isa(k, Node) k = build_kernel(k) end
     d, N = size(X)
     δG = zeros(N, N)
     δk0 = dot(k.dψdθ(zeros(d), zeros(d)), δθ)
@@ -509,7 +520,7 @@ end
 
 
 function kernel_vector(k::Union{Kernel, <:Node}, x::AbstractVector, X::AbstractMatrix)
-    if isa(k, Node) k = inorder_traversal(k) end
+    if isa(k, Node) k = build_kernel(k) end
     d, N = size(X)
     KxX = zeros(N)
 
@@ -523,7 +534,7 @@ end
 
 
 function covariance_matrix(k::Union{Kernel, <:Node}, X::AbstractMatrix, Y::AbstractMatrix)
-    if isa(k, Node) k = inorder_traversal(k) end
+    if isa(k, Node) k = build_kernel(k) end
     d, N = size(X)
     _, M = size(Y)
     K = zeros(N, M)

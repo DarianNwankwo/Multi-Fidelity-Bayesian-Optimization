@@ -55,7 +55,7 @@ function EI(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
         zx = z(μ, σ, f⁺; β=β)
         Φx = cdf(Normal(), zx)
         ϕx = pdf(Normal(), zx)
-        return -(zx * σ) * Φx + σ * ϕx
+        return -(zx * σ * Φx + σ * ϕx)
     end
     return AcquisitionFunction(EIx, lbs, ubs)
 end
