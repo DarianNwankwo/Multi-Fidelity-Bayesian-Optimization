@@ -16,7 +16,7 @@ end
 
 
 function GP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0.)
-    if isa(k, Node) k = inorder_traversal(k) end
+    if isa(k, Node) k = build_kernel(k) end
     K = gram_matrix(k, X, noise=noise)
     L = Matrix(cholesky(Symmetric(K)).L)
     c = L' \ (L \ y)
@@ -153,7 +153,7 @@ end
 function BoundedGP(k::Union{Kernel, <:Node}, X::AbstractMatrix, y::AbstractVector; noise = 0., capacity = 100)
     @assert capacity > 0 "Capacity must be greater than 0."
     @assert size(X, 2) <= capacity "Number of observations must be less than or equal to capacity."
-    if isa(k, Node) k = inorder_traversal(k) end
+    if isa(k, Node) k = build_kernel(k) end
     # Preallocate space for covariance and cholesky matrices
     K = zeros(capacity, capacity)
     L = zeros(capacity, capacity)

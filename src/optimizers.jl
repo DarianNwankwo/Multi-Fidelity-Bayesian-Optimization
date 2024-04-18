@@ -5,14 +5,14 @@ to reconstruct a new kernel object with different hyperparameters.
 """
 function log_likelihood_constructor(kernel_expression_tree::Node, X::AbstractMatrix, y::AbstractVector; noise=0.)
     function _log_likelihood(θ::AbstractVector)
-        kernel = inorder_traversal(kernel_expression_tree, θ, 0)
+        kernel = build_kernel(kernel_expression_tree, θ, 0)
         sur = GP(kernel, X, y, noise=noise)
 
         return -log_likelihood(sur)
     end
     
     function _∇log_likelihood!(g, θ)
-        kernel = inorder_traversal(kernel_expression_tree, θ, 0)
+        kernel = build_kernel(kernel_expression_tree, θ, 0)
         sur = GP(kernel, X, y, noise=noise)
         
         g[:] = -∇log_likelihood(sur)
@@ -44,6 +44,6 @@ function optimize_surrogate(;
     minimums = Optim.minimum.(results)
     global_minimizer = minimizers[argmin(minimums)]
 
-    kernel = inorder_traversal(kernel_expression_tree, global_minimizer, 0)
+    kernel = build_kernel(kernel_expression_tree, global_minimizer, 0)
     return GP(kernel, gp.X, get_observations(gp), noise=noise)
 end
