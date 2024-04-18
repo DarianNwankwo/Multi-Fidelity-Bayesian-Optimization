@@ -13,9 +13,9 @@ z(μ, σ, f⁺; β) = (f⁺-μ-β)/σ
 function UCB(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     UCBx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
-        if σ <= err
-            return NaN # Return NaN when standard deviation is too low
-        end
+        #if σ <= err
+        #    return NaN # Return NaN when standard deviation is too low
+        #end
         return μ + β * σ
     end
     return AcquisitionFunction(UCBx, lbs, ubs)
@@ -24,9 +24,9 @@ end
 function LCB(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     LCBx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
-        if σ <= err
-            return NaN # Return NaN when standard deviation is too low
-        end
+        #if σ <= err
+        #    return NaN # Return NaN when standard deviation is too low
+        #end
         return μ - β * σ
     end
     return AcquisitionFunction(LCBx, lbs, ubs)
@@ -36,9 +36,9 @@ function POI(s::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     f⁺ = minimum(s.y)
     POIx(x::AbstractVector) = begin
         μ, σ = predict(s, x)
-        if σ <= err
-            return 0 # Return 0 when standard deviation is too low
-        end
+        #if σ <= err
+        #    return 0 # Return 0 when standard deviation is too low
+        #end
         Φx = cdf(Normal(), z(μ, σ, f⁺; β=β))
         return Φx
     end
