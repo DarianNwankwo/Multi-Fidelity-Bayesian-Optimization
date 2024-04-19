@@ -8,7 +8,7 @@ BO can be expressed succinctly in 7 fundamental steps:
 1. Gather initial samples
 2. Initialize the surrogate model
 3. Construct the acquisition function $\alpha(x)$
-4. Optimize the acquisition function $x^* = \argmax_x \alpha(x)$
+4. Optimize the acquisition function $x^* = \arg\max_x \alpha(x)$
 5. Sample new data at $x^*$ and update surrogate
 6. Repeat until the budget is exhausted
 7. Make final recommendation $x^{final}$
