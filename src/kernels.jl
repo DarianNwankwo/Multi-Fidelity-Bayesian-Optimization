@@ -22,6 +22,7 @@ end
 
 
 length(k::Kernel) = length(k.θ)
+hyperparameters(k::Kernel) = copy(k.θ)
 
 
 function KernelGeneric(kernel_constructor, θ::AbstractVector, constructor, lengths)
@@ -96,19 +97,6 @@ end
 KERNEL_ADD = +
 KERNEL_MULTIPLY = *
 
-"""
-We need a representation that allows us to construct experession trees. An experession tree is a tree
-where the leaves are variables and the internal nodes are operations. The payload at each node is either
-a kernel constructor, in our instance, or an operation. We dinstinguise between the two by noting leaf nodes
-represent kernel constructors and internal nodes represent operations.
-
-TASKS:
-- [ ] Inorder traversal algorithm for reconstructing kernels
-    When we inorder traverse the expression tree, we'll need to propagate the indices of the hyperparameters
-    to the leaf nodes. This will allow us to reconstruct the kernel object with the correct hyperparameters.
-- [ ] Addition and multiplication should be used to build the expression tree then we use inorder traversal to 
-    construct the kernel object.
-"""
 mutable struct Node{T <: Union{Function, Kernel}}
     payload::T
     left::Union{<:Node, Nothing}
@@ -163,7 +151,6 @@ end
 *(left::Node, right::Kernel) = Node(KERNEL_MULTIPLY, left, Node(right))
 *(left::Kernel, right::Node) = Node(KERNEL_MULTIPLY, Node(left), right)
 (n::Node)(x::AbstractVector, y::AbstractVector) = build_kernel(n)(x, y)
-
 length(node::Node) = length(build_kernel(node).θ)
 
 
