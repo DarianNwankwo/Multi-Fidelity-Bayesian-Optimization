@@ -81,17 +81,17 @@ function optimize_acquisition(a::AcquisitionFunctionOnly; random_restarts=16, op
     return minimizer_locations[minimizer_index]
 end
 
-function get_acquisition_functions(sur::GaussianProcess; β=1., err=1e-6)
+function get_acquisition_functions(sur::GaussianProcess; lbs, ubs, β=1., err=1e-6)
     return Dict(
-        "Expected Improvement" => EI(sur; β=β, err=err),
-        "Probability of Improvement" => POI(sur; β=β, err=err),
-        "Upper Confidence Bound" => UCB(sur; β=β, err=err),
-        "Lower Confidence Bound" => LCB(sur; β=β, err=err)
+        "Expected Improvement" => EI(sur; β=β, lbs, ubs, err=err),
+        "Probability of Improvement" => POI(sur; lbs, ubs, β=β, err=err),
+        "Upper Confidence Bound" => UCB(sur; β=β, lbs, ubs, err=err),
+        "Lower Confidence Bound" => LCB(sur; β=β, lbs, ubs, err=err)
     )
 end
 
-function get_random_acquisitionfn(sur::GaussianProcess; β=1., err=1e-6)
-    testfns = get_acquisition_functions(sur; β=β, err=err)
+function get_random_acquisitionfn(sur::GaussianProcess; lbs, ubs, β=1., err=1e-6)
+    testfns = get_acquisition_functions(sur; lbs, ubs, β=β, err=err)
     names = collect(keys(testfns))
     rand_name = names[rand(1:length(names))]
     return testfns[rand_name], rand_name
